@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-10
+
+### Fixed
+
+- 移除启动时按 Workspace ID 和 Cookie 自动过滤“旧版演示账号”的迁移逻辑，任何用户账号都不会再被程序自动删除或合并。
+- API Key 探测不再将所有 HTTP 403 响应误判为凭证失效；仅 HTTP 401 或明确的认证错误会判定 API Key 无效。
+- `deepseek-v4-flash` 返回模型专属 `RegionError` 时，视为 API Key 和对应服务有效，不再错误阻止账号添加或标记 Go 未开通。
+- Workspace ID 提取支持 `/workspace/<id>/go` 等非 billing 链接。
+
+### Tests
+
+- 新增账号配置完整保留、区域限制响应和明确认证错误的回归测试。
+
 ## [0.5.0] - 2026-08-10
 
 ### Added

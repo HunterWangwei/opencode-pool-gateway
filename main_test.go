@@ -221,6 +221,34 @@ func TestFreeAccountIsHealthy(t *testing.T) {
 	}
 }
 
+func TestAccountStoreLoadPreservesAPIOnlyAndIncompleteAccounts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "accounts.json")
+	want := []Account{
+		{ID: "api-only", Name: "API Key account", APIKey: "sk-test", APIOnly: true},
+		{ID: "workspace", Name: "Workspace account", WorkspaceID: "wrk_test", AuthCookie: "cookie"},
+		{ID: "incomplete", Name: "Keep my account"},
+	}
+	body, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := accountStore{path: path}
+	if err := s.load(); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Accounts) != len(want) {
+		t.Fatalf("load removed user accounts: got %d, want %d", len(s.Accounts), len(want))
+	}
+	for i := range want {
+		if s.Accounts[i].ID != want[i].ID {
+			t.Fatalf("account order/content changed at %d: got %q, want %q", i, s.Accounts[i].ID, want[i].ID)
+		}
+	}
+}
+
 func TestAPIKeyProbeExtractsWorkspaceFromCreditsError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/zen/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer sk-test" {
@@ -248,6 +276,35 @@ func TestAPIKeyProbeDetectsEnabledService(t *testing.T) {
 	result, err := probeAPIKey("sk-test", "go")
 	if err != nil || !result.Enabled || result.Service != "go" {
 		t.Fatalf("unexpected probe result: %+v, %v", result, err)
+	}
+}
+
+func TestAPIKeyProbeAcceptsRegionErrorAndExtractsWorkspace(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"RegionError","message":"The latest version of this model is only available hosted in China and requires explicit opt in: https://opencode.ai/workspace/wrk_region123/go"}}`))
+	}))
+	defer server.Close()
+	oldBase := apiKeyProbeBase
+	apiKeyProbeBase = server.URL
+	defer func() { apiKeyProbeBase = oldBase }()
+	result, err := probeAPIKey("sk-test", "go")
+	if err != nil || !result.Enabled || result.WorkspaceID != "wrk_region123" || result.Service != "go" {
+		t.Fatalf("model-specific region restriction must confirm service entitlement: %+v, %v", result, err)
+	}
+}
+
+func TestAPIKeyProbeRejectsExplicitAuthenticationError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"AuthenticationError","message":"invalid token"}}`))
+	}))
+	defer server.Close()
+	oldBase := apiKeyProbeBase
+	apiKeyProbeBase = server.URL
+	defer func() { apiKeyProbeBase = oldBase }()
+	if _, err := probeAPIKey("sk-test", "go"); !isInvalidAPIKeyProbeError(err) {
+		t.Fatalf("explicit authentication error should reject API key: %v", err)
 	}
 }
 

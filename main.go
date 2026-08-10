@@ -707,27 +707,10 @@ func (s *accountStore) load() error {
 	if err := json.Unmarshal(b, &s.Accounts); err != nil {
 		return err
 	}
-	valid := make([]Account, 0, len(s.Accounts))
-	seen := make(map[string]int)
-	for _, account := range s.Accounts {
-		if account.WorkspaceID == "" || account.AuthCookie == "" {
-			continue
-		}
-		account.Type = "workspace"
-		if index, exists := seen[account.WorkspaceID]; exists {
-			if valid[index].APIKey == "" {
-				valid[index].APIKey = account.APIKey
-			}
-			continue
-		}
-		seen[account.WorkspaceID] = len(valid)
-		valid = append(valid, account)
+	if s.Accounts == nil {
+		s.Accounts = []Account{}
 	}
-	if len(valid) != len(s.Accounts) {
-		log.Printf("已移除 %d 个旧版演示账号", len(s.Accounts)-len(valid))
-	}
-	s.Accounts = valid
-	return s.saveLocked()
+	return nil
 }
 
 func (s *accountStore) saveLocked() error {
@@ -1016,7 +999,7 @@ func probeAPIKey(apiKey, service string) (APIKeyProbeResult, error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	workspace := ""
-	if match := regexp.MustCompile(`/workspace/(wrk_[A-Za-z0-9_-]+)/billing`).FindSubmatch(body); len(match) == 2 {
+	if match := regexp.MustCompile(`/workspace/(wrk_[A-Za-z0-9_-]+)(?:/|["'\\s]|$)`).FindSubmatch(body); len(match) == 2 {
 		workspace = string(match[1])
 	}
 	var envelope struct {
@@ -1029,10 +1012,13 @@ func probeAPIKey(apiKey, service string) (APIKeyProbeResult, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return APIKeyProbeResult{WorkspaceID: workspace, Service: service, Enabled: true, Message: "探测请求成功，已确认服务可用"}, nil
 	}
+	if strings.EqualFold(envelope.Error.Type, "RegionError") {
+		return APIKeyProbeResult{WorkspaceID: workspace, Service: service, Enabled: true, Message: envelope.Error.Message}, nil
+	}
 	if strings.EqualFold(envelope.Error.Type, "CreditsError") || workspace != "" {
 		return APIKeyProbeResult{WorkspaceID: workspace, Service: service, Enabled: false, Message: envelope.Error.Message}, nil
 	}
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+	if resp.StatusCode == http.StatusUnauthorized || strings.EqualFold(envelope.Error.Type, "AuthenticationError") || strings.EqualFold(envelope.Error.Type, "AuthError") {
 		return APIKeyProbeResult{}, errors.New("API Key 无效或已失效")
 	}
 	return APIKeyProbeResult{}, fmt.Errorf("API Key 探测返回 HTTP %d: %s", resp.StatusCode, shortBody(body))

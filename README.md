@@ -1,6 +1,6 @@
 # OpenCode Pool Gateway
 
-当前版本：`0.5.0`
+当前版本：`0.5.1`
 
 ## API 转发网关
 
@@ -103,7 +103,7 @@ Zen 免费模型清单依据 OpenCode 官方定价页维护。官方可能调整
 
 ### Windows
 
-下载 `opencode-pool-gateway-0.5.0-windows-amd64.exe`，双击运行，然后访问：
+下载 `opencode-pool-gateway-0.5.1-windows-amd64.exe`，双击运行，然后访问：
 
 ```text
 http://localhost:8787
@@ -123,11 +123,11 @@ H  显示帮助
 ### Linux
 
 ```bash
-chmod +x opencode-pool-gateway-0.5.0-linux-amd64
-./opencode-pool-gateway-0.5.0-linux-amd64
+chmod +x opencode-pool-gateway-0.5.1-linux-amd64
+./opencode-pool-gateway-0.5.1-linux-amd64
 ```
 
-ARM64 Ubuntu 使用 `opencode-pool-gateway-0.5.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+ARM64 Ubuntu 使用 `opencode-pool-gateway-0.5.1-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
 
 ## 登录安全
 
@@ -151,6 +151,10 @@ HTTPS 部署可设置 `OPG_COOKIE_SECURE=1`，强制浏览器只通过 HTTPS 发
 API Key-only 新增界面只要求填写 API Key、优先级和独立代理。探测请求固定使用 `deepseek-v4-flash` 和 `max_tokens: 1`，可能产生极少量 Token 消耗。公开模型目录不会用于验证 API Key。若上游成功响应没有返回 Workspace ID，凭证仍会保存为 API Key-only，额度信息保持不可查询，且后续刷新不会重复执行权益探测。
 
 仅 API Key 可以确认部分 Go/Zen 请求权益，但无法读取 Workspace 页面中的 Go 5 小时、每周、每月额度窗口或 Zen 余额。卡片会将这种情况标记为“需 Cookie 查询”，不会误判为“未开通”。
+
+探测模型返回 `RegionError` 表示该模型需要在 Workspace 中明确选择托管区域，并不代表 API Key 无效或整个 Go/Zen 服务不可用。程序会从错误链接提取 Workspace ID，并将对应服务视为已通过鉴权。只有 HTTP 401 或明确的认证错误才会拒绝 API Key。
+
+程序启动时只读取账号配置，不会按名称、Workspace ID、Cookie、账号类型或字段完整度自动删除或合并账号。账号仅能由管理页面的删除操作移除。
 
 | 字段 | 用途 | 是否必填 |
 | --- | --- | --- |
@@ -214,7 +218,7 @@ chmod +x scripts/build.sh
 版本号由根目录 `VERSION` 管理，并通过构建参数写入程序：
 
 ```bash
-./opencode-pool-gateway-0.5.0-linux-amd64 --version
+./opencode-pool-gateway-0.5.1-linux-amd64 --version
 ```
 
 ## 接口
