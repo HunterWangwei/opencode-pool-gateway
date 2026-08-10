@@ -3,9 +3,57 @@ package main
 import (
 	"encoding/json"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestAuthenticationFlow(t *testing.T) {
+	auth := newAuthManager("admin", "correct-horse-battery")
+	protected := auth.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+
+	unauthorized := httptest.NewRecorder()
+	protected.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/accounts", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", unauthorized.Code)
+	}
+
+	form := url.Values{"username": {"admin"}, "password": {"correct-horse-battery"}, "next": {"/#accounts"}}
+	loginRequest := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	loginRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginRequest.RemoteAddr = "127.0.0.1:50000"
+	loginResponse := httptest.NewRecorder()
+	auth.loginHandler(loginResponse, loginRequest)
+	if loginResponse.Code != http.StatusSeeOther {
+		t.Fatalf("expected login redirect, got %d", loginResponse.Code)
+	}
+	cookies := loginResponse.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode {
+		t.Fatalf("unexpected session cookie: %+v", cookies)
+	}
+
+	authorizedRequest := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	authorizedRequest.AddCookie(cookies[0])
+	authorized := httptest.NewRecorder()
+	protected.ServeHTTP(authorized, authorizedRequest)
+	if authorized.Code != http.StatusNoContent {
+		t.Fatalf("expected authenticated request, got %d", authorized.Code)
+	}
+}
+
+func TestSafeNext(t *testing.T) {
+	for _, unsafe := range []string{"", "https://example.com", "//example.com"} {
+		if got := safeNext(unsafe); got != "/" {
+			t.Fatalf("unsafe redirect %q became %q", unsafe, got)
+		}
+	}
+	if got := safeNext("/#accounts"); got != "/#accounts" {
+		t.Fatalf("valid local redirect changed to %q", got)
+	}
+}
 
 func TestParseModels(t *testing.T) {
 	raw := []json.RawMessage{json.RawMessage(`{"id":"model-a","name":"Model A","provider":"OpenCode"}`), json.RawMessage(`{"model":"model-b","owned_by":"Vendor B"}`)}

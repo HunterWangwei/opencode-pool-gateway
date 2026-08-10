@@ -3,7 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +17,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -129,6 +134,19 @@ type accountStore struct {
 	path     string
 }
 
+type loginFailure struct {
+	Count       int
+	FirstFailed time.Time
+}
+
+type authManager struct {
+	sync.Mutex
+	username string
+	password string
+	sessions map[string]time.Time
+	failures map[string]loginFailure
+}
+
 var store accountStore
 var client = &http.Client{Timeout: 18 * time.Second}
 var shutdownOnce sync.Once
@@ -150,16 +168,27 @@ func main() {
 	if err := store.load(); err != nil {
 		log.Printf("读取账号配置失败: %v", err)
 	}
+	auth, generatedPassword := authFromEnvironment()
+	if generatedPassword {
+		log.Printf("未设置 GOQUOTA_PASSWORD，已生成本次启动的临时登录密码")
+		log.Printf("登录账号: %s", auth.username)
+		log.Printf("临时密码: %s", auth.password)
+		log.Printf("公网部署请通过 GOQUOTA_USERNAME 和 GOQUOTA_PASSWORD 设置固定凭证")
+	}
 
+	appMux := http.NewServeMux()
+	appMux.HandleFunc("/api/accounts", accountsHandler)
+	appMux.HandleFunc("/api/accounts/", accountHandler)
+	appMux.HandleFunc("/api/refresh", refreshHandler)
+	appMux.HandleFunc("/api/version", versionHandler)
+	appMux.HandleFunc("/api/shutdown", shutdownHandler)
+	appMux.Handle("/", http.FileServer(http.FS(webRoot)))
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/accounts", accountsHandler)
-	mux.HandleFunc("/api/accounts/", accountHandler)
-	mux.HandleFunc("/api/refresh", refreshHandler)
-	mux.HandleFunc("/api/version", versionHandler)
-	mux.HandleFunc("/api/shutdown", shutdownHandler)
-	mux.Handle("/", http.FileServer(http.FS(webRoot)))
+	mux.HandleFunc("/login", auth.loginHandler)
+	mux.HandleFunc("/logout", auth.logoutHandler)
+	mux.Handle("/", auth.requireAuth(appMux))
 
-	server := &http.Server{Addr: listenAddr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	server := &http.Server{Addr: listenAddr, Handler: securityHeaders(mux), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
@@ -174,6 +203,184 @@ func main() {
 	defer cancel()
 	_ = server.Shutdown(ctx)
 	log.Println("GoQuota 已安全退出")
+}
+
+func authFromEnvironment() (*authManager, bool) {
+	username := strings.TrimSpace(os.Getenv("GOQUOTA_USERNAME"))
+	if username == "" {
+		username = "admin"
+	}
+	password := os.Getenv("GOQUOTA_PASSWORD")
+	generated := false
+	if password == "" {
+		password = randomToken(24)
+		generated = true
+	}
+	if len(password) < 12 {
+		log.Fatal("GOQUOTA_PASSWORD 至少需要 12 个字符")
+	}
+	return newAuthManager(username, password), generated
+}
+
+func newAuthManager(username, password string) *authManager {
+	return &authManager{username: username, password: password, sessions: make(map[string]time.Time), failures: make(map[string]loginFailure)}
+}
+
+func (a *authManager) requireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.authenticated(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			writeError(w, http.StatusUnauthorized, "请先登录")
+			return
+		}
+		nextURL := r.URL.RequestURI()
+		http.Redirect(w, r, "/login?next="+url.QueryEscape(nextURL), http.StatusSeeOther)
+	})
+}
+
+func (a *authManager) authenticated(r *http.Request) bool {
+	cookie, err := r.Cookie("goquota_session")
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	a.Lock()
+	defer a.Unlock()
+	expires, ok := a.sessions[cookie.Value]
+	if !ok || time.Now().After(expires) {
+		delete(a.sessions, cookie.Value)
+		return false
+	}
+	return true
+}
+
+func (a *authManager) loginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		body, err := webFS.ReadFile("web/login.html")
+		if err != nil {
+			http.Error(w, "login page unavailable", http.StatusInternalServerError)
+			return
+		}
+		errorMessage := ""
+		switch r.URL.Query().Get("error") {
+		case "invalid":
+			errorMessage = "账号或密码不正确"
+		case "locked":
+			errorMessage = "失败次数过多，请 5 分钟后重试"
+		}
+		page := strings.ReplaceAll(string(body), "{{ERROR}}", html.EscapeString(errorMessage))
+		page = strings.ReplaceAll(page, "{{NEXT}}", html.EscapeString(safeNext(r.URL.Query().Get("next"))))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = io.WriteString(w, page)
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if clientIP == "" {
+		clientIP = r.RemoteAddr
+	}
+	if a.loginBlocked(clientIP) {
+		http.Redirect(w, r, "/login?error=locked", http.StatusSeeOther)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/login?error=invalid", http.StatusSeeOther)
+		return
+	}
+	if !secureEqual(r.FormValue("username"), a.username) || !secureEqual(r.FormValue("password"), a.password) {
+		a.recordFailure(clientIP)
+		time.Sleep(250 * time.Millisecond)
+		http.Redirect(w, r, "/login?error=invalid", http.StatusSeeOther)
+		return
+	}
+	a.Lock()
+	delete(a.failures, clientIP)
+	token := randomToken(32)
+	a.sessions[token] = time.Now().Add(24 * time.Hour)
+	a.Unlock()
+	http.SetCookie(w, &http.Cookie{Name: "goquota_session", Value: token, Path: "/", MaxAge: 86400, HttpOnly: true, Secure: requestIsHTTPS(r), SameSite: http.SameSiteStrictMode})
+	nextURL := safeNext(r.FormValue("next"))
+	http.Redirect(w, r, nextURL, http.StatusSeeOther)
+}
+
+func (a *authManager) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if cookie, err := r.Cookie("goquota_session"); err == nil {
+		a.Lock()
+		delete(a.sessions, cookie.Value)
+		a.Unlock()
+	}
+	http.SetCookie(w, &http.Cookie{Name: "goquota_session", Path: "/", MaxAge: -1, HttpOnly: true, Secure: requestIsHTTPS(r), SameSite: http.SameSiteStrictMode})
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func (a *authManager) loginBlocked(ip string) bool {
+	a.Lock()
+	defer a.Unlock()
+	failure, ok := a.failures[ip]
+	if !ok {
+		return false
+	}
+	if time.Since(failure.FirstFailed) > 5*time.Minute {
+		delete(a.failures, ip)
+		return false
+	}
+	return failure.Count >= 5
+}
+
+func (a *authManager) recordFailure(ip string) {
+	a.Lock()
+	defer a.Unlock()
+	failure := a.failures[ip]
+	if failure.Count == 0 || time.Since(failure.FirstFailed) > 5*time.Minute {
+		failure = loginFailure{FirstFailed: time.Now()}
+	}
+	failure.Count++
+	a.failures[ip] = failure
+}
+
+func secureEqual(left, right string) bool {
+	leftHash, rightHash := sha256.Sum256([]byte(left)), sha256.Sum256([]byte(right))
+	return subtle.ConstantTimeCompare(leftHash[:], rightHash[:]) == 1
+}
+
+func randomToken(size int) string {
+	buffer := make([]byte, size)
+	if _, err := rand.Read(buffer); err != nil {
+		log.Fatal(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(buffer)
+}
+
+func safeNext(value string) string {
+	if value == "" || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") {
+		return "/"
+	}
+	return value
+}
+
+func requestIsHTTPS(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || os.Getenv("GOQUOTA_COOKIE_SECURE") == "1"
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; frame-ancestors 'none'; form-action 'self'")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func versionHandler(w http.ResponseWriter, r *http.Request) {

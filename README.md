@@ -2,7 +2,7 @@
 
 GoQuota 是一个使用 Go 标准库构建的 OpenCode Go / Zen 账号额度监控工具。程序不依赖 OpenCode CLI，通过网页管理多个 Workspace，并直接查询 OpenCode 官方页面和模型接口。
 
-> 当前版本：`0.1.0`
+> 当前版本：`0.2.0`
 
 ## 功能
 
@@ -14,12 +14,13 @@ GoQuota 是一个使用 Go 标准库构建的 OpenCode Go / Zen 账号额度监�
 - 账号卡片支持搜索、状态筛选、编辑、刷新和删除。
 - Windows 控制台支持打开网页、刷新、帮助和安全退出。
 - 数据与可执行文件放在同一目录，便于迁移和备份。
+- 服务端登录验证、会话管理和登录失败限流。
 
 ## 快速开始
 
 ### Windows
 
-下载 `goquota-0.1.0-windows-amd64.exe`，双击运行，然后访问：
+下载 `goquota-0.2.0-windows-amd64.exe`，双击运行，然后访问：
 
 ```text
 http://localhost:8787
@@ -34,14 +35,34 @@ Q  安全退出
 H  显示帮助
 ```
 
+如果未设置环境变量，控制台会显示本次启动生成的临时用户名和密码。需要固定登录密码时：
+
+```powershell
+$env:GOQUOTA_USERNAME = "admin"
+$env:GOQUOTA_PASSWORD = "请替换为至少12位的强密码"
+.\goquota-0.2.0-windows-amd64.exe
+```
+
 ### Linux
 
 ```bash
-chmod +x goquota-0.1.0-linux-amd64
-./goquota-0.1.0-linux-amd64
+chmod +x goquota-0.2.0-linux-amd64
+GOQUOTA_USERNAME=admin GOQUOTA_PASSWORD='请替换为至少12位的强密码' ./goquota-0.2.0-linux-amd64
 ```
 
-ARM64 Ubuntu 使用 `goquota-0.1.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+ARM64 Ubuntu 使用 `goquota-0.2.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+
+## 登录安全
+
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `GOQUOTA_USERNAME` | `admin` | 管理登录用户名 |
+| `GOQUOTA_PASSWORD` | 启动时随机生成 | 固定管理密码，至少 12 个字符 |
+| `GOQUOTA_COOKIE_SECURE` | `0` | HTTPS 部署可设为 `1`，强制 Secure Cookie |
+
+未设置 `GOQUOTA_PASSWORD` 时，每次启动都会生成不同的临时密码并输出到控制台或 systemd 日志。公网部署必须设置固定强密码。
+
+认证保护覆盖网页、静态资源和全部 `/api/` 接口。会话有效期为 24 小时；Cookie 使用 `HttpOnly` 和 `SameSite=Strict`。
 
 ## 添加账号
 
@@ -95,7 +116,7 @@ chmod +x scripts/build.sh
 版本号由根目录 `VERSION` 管理，并通过构建参数写入程序：
 
 ```bash
-./goquota-0.1.0-linux-amd64 --version
+./goquota-0.2.0-linux-amd64 --version
 ```
 
 ## 接口
@@ -112,8 +133,8 @@ chmod +x scripts/build.sh
 
 ## 安全说明
 
-- 不要将服务端口直接暴露到公网。
-- Ubuntu 部署建议通过 HTTPS 反向代理，并增加访问认证或 VPN。
+- 即使已有应用登录，也建议通过 HTTPS 反向代理访问，不要通过公网明文 HTTP 输入密码。
+- Ubuntu 部署建议配合防火墙或 VPN，避免无关来源访问登录入口。
 - Cookie 和 API Key 均视为账号凭证；泄漏后应立即撤销或重新登录。
 - GoQuota 是非官方项目，OpenCode 页面或接口结构变化可能导致采集暂时失效。
 

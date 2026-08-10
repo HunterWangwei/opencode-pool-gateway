@@ -25,7 +25,7 @@
     </section>
     <section class="view" id="view-settings">
       <header><div><p class="eyebrow">SYSTEM SETTINGS</p><h1>设置</h1><p class="sub">配置监控频率和界面偏好。</p></div><button class="primary save-button">保存设置</button></header>
-      <div class="panel settings-panel narrow"><div class="panel-head"><div><h2>监控设置</h2><p>应用于全部接入账号</p></div></div><div class="form-body"><label>自动刷新间隔<select><option>每 1 分钟</option><option selected>每 5 分钟</option><option>每 15 分钟</option><option>每 30 分钟</option></select></label><label>默认视图<select><option>额度总览</option><option>账号池</option></select></label><label class="inline-toggle"><span><b>启动时自动刷新</b><small>打开控制台时立即获取最新额度</small></span><input type="checkbox" checked></label><div class="danger-zone"><div><b>退出 GoQuota</b><small>安全关闭本地监控服务和当前程序</small></div><button class="danger-button" id="shutdown">退出程序</button></div></div></div>
+      <div class="panel settings-panel narrow"><div class="panel-head"><div><h2>监控设置</h2><p>应用于全部接入账号</p></div></div><div class="form-body"><label>自动刷新间隔<select><option>每 1 分钟</option><option selected>每 5 分钟</option><option>每 15 分钟</option><option>每 30 分钟</option></select></label><label>默认视图<select><option>额度总览</option><option>账号池</option></select></label><label class="inline-toggle"><span><b>启动时自动刷新</b><small>打开控制台时立即获取最新额度</small></span><input type="checkbox" checked></label><div class="session-zone"><div><b>当前登录会话</b><small>退出后需要重新输入管理账号和密码</small></div><form method="post" action="/logout"><button class="secondary" type="submit">退出登录</button></form></div><div class="danger-zone"><div><b>退出 GoQuota</b><small>安全关闭本地监控服务和当前程序</small></div><button class="danger-button" id="shutdown">退出程序</button></div></div></div>
     </section>
   </main>
 </div>

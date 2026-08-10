@@ -2,6 +2,16 @@
 
 本文档记录 GoQuota 的重要变更，版本号遵循 Semantic Versioning。
 
+## [0.2.0] - 2026-08-10
+
+### Added
+
+- 服务端登录验证，未认证用户无法访问页面和 API。
+- 24 小时 HttpOnly、SameSite 会话 Cookie。
+- 单 IP 登录失败限流：5 次失败后锁定 5 分钟。
+- `GOQUOTA_USERNAME`、`GOQUOTA_PASSWORD` 和 `GOQUOTA_COOKIE_SECURE` 部署配置。
+- 网页退出登录入口和基础安全响应头。
+
 ## [0.1.0] - 2026-08-10
 
 ### Added
