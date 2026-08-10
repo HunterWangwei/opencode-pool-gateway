@@ -11,6 +11,9 @@ mkdir -p "$ROOT/dist"
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o "$ROOT/dist/goquota-$VERSION-windows-amd64.exe" "$ROOT"
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o "$ROOT/dist/goquota-$VERSION-linux-amd64" "$ROOT"
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$LDFLAGS" -o "$ROOT/dist/goquota-$VERSION-linux-arm64" "$ROOT"
-(cd "$ROOT/dist" && sha256sum goquota-"$VERSION"-* > SHA256SUMS.txt)
+(cd "$ROOT/dist" && sha256sum \
+  "goquota-$VERSION-windows-amd64.exe" \
+  "goquota-$VERSION-linux-amd64" \
+  "goquota-$VERSION-linux-arm64" > SHA256SUMS.txt)
 
 printf 'Built GoQuota %s in %s/dist\n' "$VERSION" "$ROOT"

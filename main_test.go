@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +54,50 @@ func TestSafeNext(t *testing.T) {
 	}
 	if got := safeNext("/#accounts"); got != "/#accounts" {
 		t.Fatalf("valid local redirect changed to %q", got)
+	}
+}
+
+func TestCredentialMinimumLength(t *testing.T) {
+	if err := validateCredentials("admin", "12345678"); err != nil {
+		t.Fatalf("8-character password should be accepted: %v", err)
+	}
+	if err := validateCredentials("admin", "1234567"); err == nil {
+		t.Fatal("7-character password should be rejected")
+	}
+}
+
+func TestAuthConfigLoadAndHotUpdate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data", "auth.json")
+	initialHash := hashPassword("initial-password-123")
+	if err := saveAuthConfig(path, authConfig{Username: "configured-admin", PasswordHash: initialHash, UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	auth, generated, err := loadAuthManager(path)
+	if err != nil || generated != "" || auth.username != "configured-admin" || !verifyPassword("initial-password-123", auth.passwordHash) {
+		t.Fatalf("config was not loaded: generated=%q err=%v", generated, err)
+	}
+	auth.sessions["existing-session"] = time.Now().Add(time.Hour)
+
+	payload := `{"currentPassword":"initial-password-123","username":"new-admin","newPassword":"updated-password-456"}`
+	request := httptest.NewRequest(http.MethodPut, "/api/auth", strings.NewReader(payload))
+	response := httptest.NewRecorder()
+	auth.credentialsHandler(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("credential update failed: %d %s", response.Code, response.Body.String())
+	}
+	if auth.username != "new-admin" || !verifyPassword("updated-password-456", auth.passwordHash) || verifyPassword("initial-password-123", auth.passwordHash) {
+		t.Fatal("credentials were not hot-updated")
+	}
+	if len(auth.sessions) != 0 {
+		t.Fatal("existing sessions were not invalidated")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	if strings.Contains(text, "initial-password-123") || strings.Contains(text, "updated-password-456") || !strings.Contains(text, "pbkdf2-sha256$") {
+		t.Fatalf("auth config did not store a safe hash: %s", text)
 	}
 }
 
@@ -139,5 +185,96 @@ func TestParseZenBalanceChineseHTML(t *testing.T) {
 func TestParseZenBalanceMissing(t *testing.T) {
 	if _, ok := parseZenBalance("login required"); ok {
 		t.Fatal("expected missing balance")
+	}
+}
+
+func TestParseDiscoveredEmail(t *testing.T) {
+	for _, body := range [][]byte{
+		[]byte(`"owner@example.com"`),
+		[]byte(`{"data":{"userEmail":"owner@example.com"}}`),
+	} {
+		if got := parseDiscoveredEmail(body); got != "owner@example.com" {
+			t.Fatalf("unexpected email %q", got)
+		}
+	}
+}
+
+func TestParseDiscoveredAPIKeysKeepsOnlyFullKeys(t *testing.T) {
+	body := []byte(`{"data":[{"id":"key-1","name":"Default","email":"owner@example.com","key":"sk-full-secret-value"},{"id":"key-2","name":"Other member","key":"sk-abc...xyz"}]}`)
+	keys := parseDiscoveredAPIKeys(body)
+	if len(keys) != 1 || keys[0].ID != "key-1" || keys[0].Key != "sk-full-secret-value" {
+		t.Fatalf("unexpected keys: %+v", keys)
+	}
+	if strings.Contains(keys[0].Display, "full-secret") || !strings.HasPrefix(keys[0].Display, "sk-ful") {
+		t.Fatalf("key was not safely masked: %q", keys[0].Display)
+	}
+}
+
+func TestParseDiscoveredAPIKeysFromSerovalStream(t *testing.T) {
+	body := []byte(`;0x00000123;((self.$R=self.$R||{})["server-fn:1"]=[],($R=>$R[0]=[$R[1]={id:"key_123",name:"Default API Key",key:"sk-AbCdEf0123456789",timeUsed:null,userID:"usr_123",email:"owner@example.com",keyDisplay:"sk-AbCd...6789"}])($R["server-fn:1"]))`)
+	keys := parseDiscoveredAPIKeys(body)
+	if len(keys) != 1 {
+		t.Fatalf("expected one streamed key, got %+v", keys)
+	}
+	if keys[0].ID != "key_123" || keys[0].Name != "Default API Key" || keys[0].Email != "owner@example.com" || keys[0].Key != "sk-AbCdEf0123456789" || keys[0].Display != "sk-AbCd...6789" {
+		t.Fatalf("unexpected streamed key: %+v", keys[0])
+	}
+}
+
+func TestAccountDiscoveryMultipleKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Cookie") != "auth=test-cookie" {
+			t.Fatalf("unexpected cookie header: %q", r.Header.Get("Cookie"))
+		}
+		var payload struct {
+			Tree struct {
+				Type  int `json:"t"`
+				Items []struct {
+					Type  int    `json:"t"`
+					Value string `json:"s"`
+				} `json:"a"`
+			} `json:"t"`
+			Features int `json:"f"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.Tree.Type != 9 || len(payload.Tree.Items) != 1 || payload.Tree.Items[0].Type != 1 || payload.Tree.Items[0].Value != "wrk_test" || payload.Features != 31 {
+			t.Fatalf("request was not Seroval JSON: %+v", payload)
+		}
+		switch r.Header.Get("X-Server-Id") {
+		case userEmailServerID:
+			_, _ = w.Write([]byte(`"owner@example.com"`))
+		case keyListServerID:
+			_, _ = w.Write([]byte(`[{"id":"one","name":"First","key":"sk-first-secret"},{"id":"two","name":"Second","key":"sk-second-secret"}]`))
+		default:
+			t.Fatalf("unexpected server id")
+		}
+	}))
+	defer server.Close()
+	oldURL, oldClient := discoveryServerURL, client
+	discoveryServerURL, client = server.URL, server.Client()
+	defer func() { discoveryServerURL, client = oldURL, oldClient }()
+
+	result, err := discoverAccount("wrk_test", "test-cookie")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Email != "owner@example.com" || len(result.APIKeys) != 2 {
+		t.Fatalf("unexpected discovery result: %+v", result)
+	}
+}
+
+func TestAccountDiscoveryRejectsExpiredCookie(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/authorize", http.StatusFound)
+	}))
+	defer server.Close()
+	oldURL, oldClient := discoveryServerURL, client
+	discoveryServerURL, client = server.URL, server.Client()
+	defer func() { discoveryServerURL, client = oldURL, oldClient }()
+
+	if _, err := discoverAccount("wrk_test", "expired"); err == nil || !strings.Contains(err.Error(), "Cookie") {
+		t.Fatalf("expected explicit expired-cookie error, got %v", err)
 	}
 }

@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +39,11 @@ const (
 	goModelsURL  = "https://opencode.ai/zen/go/v1/models"
 	zenModelsURL = "https://opencode.ai/zen/v1/models"
 	refreshEvery = 5 * time.Minute
+)
+
+const (
+	userEmailServerID = "44e81edfbd76665bfe0657aa7f751d7e73ab8d4a1b00f5b9909ba57ece0cf874"
+	keyListServerID   = "c22cd964237ba79f2f9b95faa2a14b804f870d1bab49279463379cc6a0fd0c85"
 )
 
 type UsageWindow struct {
@@ -128,6 +135,20 @@ type PublicAccount struct {
 	HasCookie     bool         `json:"hasCookie"`
 }
 
+type DiscoveredAPIKey struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Email   string `json:"email,omitempty"`
+	Key     string `json:"key"`
+	Display string `json:"display"`
+}
+
+type AccountDiscovery struct {
+	Email    string             `json:"email,omitempty"`
+	APIKeys  []DiscoveredAPIKey `json:"apiKeys"`
+	Warnings []string           `json:"warnings,omitempty"`
+}
+
 type accountStore struct {
 	sync.RWMutex
 	Accounts []Account `json:"accounts"`
@@ -139,16 +160,24 @@ type loginFailure struct {
 	FirstFailed time.Time
 }
 
+type authConfig struct {
+	Username     string    `json:"username"`
+	PasswordHash string    `json:"passwordHash"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
 type authManager struct {
 	sync.Mutex
-	username string
-	password string
-	sessions map[string]time.Time
-	failures map[string]loginFailure
+	username     string
+	passwordHash string
+	path         string
+	sessions     map[string]time.Time
+	failures     map[string]loginFailure
 }
 
 var store accountStore
 var client = &http.Client{Timeout: 18 * time.Second}
+var discoveryServerURL = "https://opencode.ai/_server"
 var shutdownOnce sync.Once
 var shutdownSignal = make(chan struct{})
 var version = "dev"
@@ -168,18 +197,23 @@ func main() {
 	if err := store.load(); err != nil {
 		log.Printf("读取账号配置失败: %v", err)
 	}
-	auth, generatedPassword := authFromEnvironment()
-	if generatedPassword {
-		log.Printf("未设置 GOQUOTA_PASSWORD，已生成本次启动的临时登录密码")
+	auth, generatedPassword, err := loadAuthManager(authDataPath())
+	if err != nil {
+		log.Fatal("读取登录配置失败: ", err)
+	}
+	if generatedPassword != "" {
+		log.Printf("data/auth.json 不存在，已生成并保存初始登录凭证")
 		log.Printf("登录账号: %s", auth.username)
-		log.Printf("临时密码: %s", auth.password)
-		log.Printf("公网部署请通过 GOQUOTA_USERNAME 和 GOQUOTA_PASSWORD 设置固定凭证")
+		log.Printf("初始密码: %s", generatedPassword)
+		log.Printf("请登录后立即在设置页面修改账号和密码")
 	}
 
 	appMux := http.NewServeMux()
 	appMux.HandleFunc("/api/accounts", accountsHandler)
+	appMux.HandleFunc("/api/accounts/discover", accountDiscoverHandler)
 	appMux.HandleFunc("/api/accounts/", accountHandler)
 	appMux.HandleFunc("/api/refresh", refreshHandler)
+	appMux.HandleFunc("/api/auth", auth.credentialsHandler)
 	appMux.HandleFunc("/api/version", versionHandler)
 	appMux.HandleFunc("/api/shutdown", shutdownHandler)
 	appMux.Handle("/", http.FileServer(http.FS(webRoot)))
@@ -205,25 +239,37 @@ func main() {
 	log.Println("GoQuota 已安全退出")
 }
 
-func authFromEnvironment() (*authManager, bool) {
-	username := strings.TrimSpace(os.Getenv("GOQUOTA_USERNAME"))
-	if username == "" {
-		username = "admin"
+func loadAuthManager(path string) (*authManager, string, error) {
+	b, err := os.ReadFile(path)
+	if err == nil {
+		var config authConfig
+		if json.Unmarshal(b, &config) != nil || strings.TrimSpace(config.Username) == "" || !validPasswordHash(config.PasswordHash) {
+			return nil, "", errors.New("data/auth.json 格式无效")
+		}
+		return newAuthManagerFromHash(config.Username, config.PasswordHash, path), "", nil
 	}
-	password := os.Getenv("GOQUOTA_PASSWORD")
-	generated := false
-	if password == "" {
-		password = randomToken(24)
-		generated = true
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, "", err
 	}
-	if len(password) < 12 {
-		log.Fatal("GOQUOTA_PASSWORD 至少需要 12 个字符")
+	username := "admin"
+	password := randomToken(18)
+	if err := validateCredentials(username, password); err != nil {
+		return nil, "", err
 	}
-	return newAuthManager(username, password), generated
+	hash := hashPassword(password)
+	manager := newAuthManagerFromHash(username, hash, path)
+	if err := saveAuthConfig(path, authConfig{Username: username, PasswordHash: hash, UpdatedAt: time.Now()}); err != nil {
+		return nil, "", err
+	}
+	return manager, password, nil
 }
 
 func newAuthManager(username, password string) *authManager {
-	return &authManager{username: username, password: password, sessions: make(map[string]time.Time), failures: make(map[string]loginFailure)}
+	return newAuthManagerFromHash(username, hashPassword(password), "")
+}
+
+func newAuthManagerFromHash(username, passwordHash, path string) *authManager {
+	return &authManager{username: username, passwordHash: passwordHash, path: path, sessions: make(map[string]time.Time), failures: make(map[string]loginFailure)}
 }
 
 func (a *authManager) requireAuth(next http.Handler) http.Handler {
@@ -270,7 +316,14 @@ func (a *authManager) loginHandler(w http.ResponseWriter, r *http.Request) {
 		case "locked":
 			errorMessage = "失败次数过多，请 5 分钟后重试"
 		}
+		noticeMessage := ""
+		if r.URL.Query().Get("changed") == "1" {
+			noticeMessage = "登录账号和密码已更新，请重新登录"
+		} else if r.URL.Query().Get("expired") == "1" {
+			noticeMessage = "管理登录已失效，请重新登录后继续"
+		}
 		page := strings.ReplaceAll(string(body), "{{ERROR}}", html.EscapeString(errorMessage))
+		page = strings.ReplaceAll(page, "{{NOTICE}}", html.EscapeString(noticeMessage))
 		page = strings.ReplaceAll(page, "{{NEXT}}", html.EscapeString(safeNext(r.URL.Query().Get("next"))))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
@@ -294,7 +347,10 @@ func (a *authManager) loginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error=invalid", http.StatusSeeOther)
 		return
 	}
-	if !secureEqual(r.FormValue("username"), a.username) || !secureEqual(r.FormValue("password"), a.password) {
+	a.Lock()
+	username, passwordHash := a.username, a.passwordHash
+	a.Unlock()
+	if !secureEqual(r.FormValue("username"), username) || !verifyPassword(r.FormValue("password"), passwordHash) {
 		a.recordFailure(clientIP)
 		time.Sleep(250 * time.Millisecond)
 		http.Redirect(w, r, "/login?error=invalid", http.StatusSeeOther)
@@ -308,6 +364,49 @@ func (a *authManager) loginHandler(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: "goquota_session", Value: token, Path: "/", MaxAge: 86400, HttpOnly: true, Secure: requestIsHTTPS(r), SameSite: http.SameSiteStrictMode})
 	nextURL := safeNext(r.FormValue("next"))
 	http.Redirect(w, r, nextURL, http.StatusSeeOther)
+}
+
+func (a *authManager) credentialsHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		a.Lock()
+		username := a.username
+		a.Unlock()
+		writeJSON(w, http.StatusOK, map[string]string{"username": username})
+	case http.MethodPut:
+		var input struct {
+			CurrentPassword string `json:"currentPassword"`
+			Username        string `json:"username"`
+			NewPassword     string `json:"newPassword"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "请求数据无效")
+			return
+		}
+		input.Username = strings.TrimSpace(input.Username)
+		if err := validateCredentials(input.Username, input.NewPassword); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		a.Lock()
+		defer a.Unlock()
+		if !verifyPassword(input.CurrentPassword, a.passwordHash) {
+			writeError(w, http.StatusUnauthorized, "当前密码不正确")
+			return
+		}
+		hash := hashPassword(input.NewPassword)
+		config := authConfig{Username: input.Username, PasswordHash: hash, UpdatedAt: time.Now()}
+		if err := saveAuthConfig(a.path, config); err != nil {
+			writeError(w, http.StatusInternalServerError, "保存登录配置失败: "+err.Error())
+			return
+		}
+		a.username, a.passwordHash = input.Username, hash
+		a.sessions = make(map[string]time.Time)
+		a.failures = make(map[string]loginFailure)
+		writeJSON(w, http.StatusOK, map[string]bool{"reauthenticate": true})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 func (a *authManager) logoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -354,6 +453,97 @@ func secureEqual(left, right string) bool {
 	return subtle.ConstantTimeCompare(leftHash[:], rightHash[:]) == 1
 }
 
+func validateCredentials(username, password string) error {
+	if username == "" || len(username) > 64 {
+		return errors.New("用户名长度必须为 1 到 64 个字符")
+	}
+	if len(password) < 8 || len(password) > 256 {
+		return errors.New("密码长度必须为 8 到 256 个字符")
+	}
+	return nil
+}
+
+func hashPassword(password string) string {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		log.Fatal(err)
+	}
+	const iterations = 600000
+	derived := pbkdf2SHA256([]byte(password), salt, iterations, 32)
+	return fmt.Sprintf("pbkdf2-sha256$%d$%s$%s", iterations, base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(derived))
+}
+
+func verifyPassword(password, encoded string) bool {
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 4 || parts[0] != "pbkdf2-sha256" {
+		return false
+	}
+	iterations, err := strconv.Atoi(parts[1])
+	if err != nil || iterations < 100000 || iterations > 2000000 {
+		return false
+	}
+	salt, saltErr := base64.RawStdEncoding.DecodeString(parts[2])
+	want, hashErr := base64.RawStdEncoding.DecodeString(parts[3])
+	if saltErr != nil || hashErr != nil || len(salt) < 16 || len(want) != 32 {
+		return false
+	}
+	got := pbkdf2SHA256([]byte(password), salt, iterations, len(want))
+	return subtle.ConstantTimeCompare(got, want) == 1
+}
+
+func validPasswordHash(encoded string) bool {
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 4 || parts[0] != "pbkdf2-sha256" {
+		return false
+	}
+	iterations, err := strconv.Atoi(parts[1])
+	salt, saltErr := base64.RawStdEncoding.DecodeString(parts[2])
+	hash, hashErr := base64.RawStdEncoding.DecodeString(parts[3])
+	return err == nil && iterations >= 100000 && iterations <= 2000000 && saltErr == nil && len(salt) >= 16 && hashErr == nil && len(hash) == 32
+}
+
+func pbkdf2SHA256(password, salt []byte, iterations, keyLength int) []byte {
+	hashLength := sha256.Size
+	blocks := (keyLength + hashLength - 1) / hashLength
+	derived := make([]byte, 0, blocks*hashLength)
+	for block := 1; block <= blocks; block++ {
+		mac := hmac.New(sha256.New, password)
+		_, _ = mac.Write(salt)
+		var counter [4]byte
+		binary.BigEndian.PutUint32(counter[:], uint32(block))
+		_, _ = mac.Write(counter[:])
+		u := mac.Sum(nil)
+		t := append([]byte(nil), u...)
+		for i := 1; i < iterations; i++ {
+			mac = hmac.New(sha256.New, password)
+			_, _ = mac.Write(u)
+			u = mac.Sum(nil)
+			for j := range t {
+				t[j] ^= u[j]
+			}
+		}
+		derived = append(derived, t...)
+	}
+	return derived[:keyLength]
+}
+
+func saveAuthConfig(path string, config authConfig) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, b, 0600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
+}
+
 func randomToken(size int) string {
 	buffer := make([]byte, size)
 	if _, err := rand.Read(buffer); err != nil {
@@ -397,6 +587,10 @@ func dataPath() string {
 		return filepath.Join("data", "accounts.json")
 	}
 	return filepath.Join(filepath.Dir(executable), "data", "accounts.json")
+}
+
+func authDataPath() string {
+	return filepath.Join(filepath.Dir(dataPath()), "auth.json")
 }
 
 func legacyDataPath() string {
@@ -471,6 +665,257 @@ func (s *accountStore) saveLocked() error {
 	return os.WriteFile(s.path, b, 0600)
 }
 
+func accountDiscoverHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var input struct{ WorkspaceID, AuthCookie string }
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "请求数据无效")
+		return
+	}
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	input.AuthCookie = strings.TrimSpace(input.AuthCookie)
+	if input.WorkspaceID == "" || input.AuthCookie == "" {
+		writeError(w, http.StatusBadRequest, "Workspace ID 和 auth Cookie 均为必填")
+		return
+	}
+	if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(input.WorkspaceID) {
+		writeError(w, http.StatusBadRequest, "Workspace ID 格式无效")
+		return
+	}
+	discovery, err := discoverAccount(input.WorkspaceID, input.AuthCookie)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, discovery)
+}
+
+func discoverAccount(workspaceID, authCookie string) (AccountDiscovery, error) {
+	result := AccountDiscovery{APIKeys: []DiscoveredAPIKey{}}
+	emailBody, err := callOpenCodeServerFunction(userEmailServerID, workspaceID, authCookie)
+	if err != nil {
+		return result, fmt.Errorf("自动读取账号邮箱失败: %w", err)
+	}
+	result.Email = parseDiscoveredEmail(emailBody)
+	if result.Email == "" {
+		result.Warnings = append(result.Warnings, "未读取到账号邮箱，可手动填写显示名称")
+	}
+	keyBody, err := callOpenCodeServerFunction(keyListServerID, workspaceID, authCookie)
+	if err != nil {
+		result.Warnings = append(result.Warnings, "未读取到 API Key，可手动填写")
+		return result, nil
+	}
+	result.APIKeys = parseDiscoveredAPIKeys(keyBody)
+	if len(result.APIKeys) == 0 {
+		result.Warnings = append(result.Warnings, "当前账号没有可自动读取的 API Key，可留空或手动填写")
+	}
+	return result, nil
+}
+
+func callOpenCodeServerFunction(serverID, workspaceID, authCookie string) ([]byte, error) {
+	body, _ := json.Marshal(map[string]any{
+		"t": map[string]any{
+			"t": 9,
+			"i": 0,
+			"l": 1,
+			"a": []any{map[string]any{"t": 1, "s": workspaceID}},
+			"o": 0,
+		},
+		"f": 31,
+		"m": []any{},
+	})
+	req, err := http.NewRequest(http.MethodPost, discoveryServerURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("X-Server-Id", serverID)
+	req.Header.Set("X-Server-Instance", "server-fn:1")
+	req.Header.Set("Cookie", normalizeAuthCookie(authCookie))
+	resp, err := client.Do(req)
+	if err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "authorize") || strings.Contains(lower, "login") {
+			return nil, errors.New("auth Cookie 已失效或无权访问该 Workspace")
+		}
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, err
+	}
+	finalURL := ""
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = resp.Request.URL.Path
+	}
+	text := strings.ToLower(strings.TrimSpace(string(data)))
+	if strings.Contains(finalURL, "authorize") || strings.Contains(finalURL, "login") || strings.Contains(text, "sign in") || strings.Contains(text, "login required") {
+		return nil, errors.New("auth Cookie 已失效或无权访问该 Workspace")
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, errors.New("auth Cookie 已失效或 Workspace ID 不匹配")
+		}
+		if resp.StatusCode == http.StatusInternalServerError {
+			return nil, errors.New("OpenCode 账号接口调用失败，请确认 Cookie 完整且 Workspace ID 属于当前账号")
+		}
+		return nil, fmt.Errorf("OpenCode 返回 HTTP %d", resp.StatusCode)
+	}
+	if len(data) == 0 {
+		return nil, errors.New("OpenCode 返回空数据")
+	}
+	return data, nil
+}
+
+func normalizeAuthCookie(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.Contains(value, "auth=") {
+		return value
+	}
+	return "auth=" + value
+}
+
+func parseDiscoveredEmail(data []byte) string {
+	var value any
+	if json.Unmarshal(data, &value) == nil {
+		if email := findEmail(value); email != "" {
+			return email
+		}
+	}
+	match := regexp.MustCompile(`[A-Za-z0-9.!#$%&'*+/=?^_` + "`" + `{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+`).Find(data)
+	return string(match)
+}
+
+func findEmail(value any) string {
+	switch value := value.(type) {
+	case string:
+		if strings.Contains(value, "@") {
+			return value
+		}
+	case []any:
+		for _, item := range value {
+			if email := findEmail(item); email != "" {
+				return email
+			}
+		}
+	case map[string]any:
+		for _, key := range []string{"email", "userEmail", "data", "value"} {
+			if item, ok := value[key]; ok {
+				if email := findEmail(item); email != "" {
+					return email
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func parseDiscoveredAPIKeys(data []byte) []DiscoveredAPIKey {
+	var value any
+	if json.Unmarshal(data, &value) == nil {
+		return collectDiscoveredAPIKeys(value)
+	}
+	return parseStreamedAPIKeys(string(data))
+}
+
+func collectDiscoveredAPIKeys(value any) []DiscoveredAPIKey {
+	var objects []map[string]any
+	collectObjects(value, &objects)
+	seen := map[string]bool{}
+	keys := make([]DiscoveredAPIKey, 0)
+	for _, object := range objects {
+		key, _ := object["key"].(string)
+		key = strings.TrimSpace(key)
+		if key == "" || strings.Contains(key, "...") || seen[key] {
+			continue
+		}
+		seen[key] = true
+		item := DiscoveredAPIKey{Key: key, ID: stringField(object, "id"), Name: stringField(object, "name"), Email: stringField(object, "email")}
+		if item.Email == "" {
+			item.Email = stringField(object, "userEmail")
+		}
+		if item.Name == "" {
+			item.Name = "API Key"
+		}
+		item.Display = maskAPIKey(key)
+		keys = append(keys, item)
+	}
+	return keys
+}
+
+func parseStreamedAPIKeys(text string) []DiscoveredAPIKey {
+	objectRE := regexp.MustCompile(`\{[^{}]*\bkey:"(sk-[A-Za-z0-9]+)"[^{}]*\}`)
+	field := func(object, name string) string {
+		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `:"((?:\\.|[^"\\])*)"`)
+		match := re.FindStringSubmatch(object)
+		if len(match) < 2 {
+			return ""
+		}
+		value, err := strconv.Unquote(`"` + match[1] + `"`)
+		if err != nil {
+			return match[1]
+		}
+		return value
+	}
+	seen := map[string]bool{}
+	keys := make([]DiscoveredAPIKey, 0)
+	for _, match := range objectRE.FindAllStringSubmatch(text, -1) {
+		key := match[1]
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		object := match[0]
+		item := DiscoveredAPIKey{
+			ID:      field(object, "id"),
+			Name:    field(object, "name"),
+			Email:   field(object, "email"),
+			Key:     key,
+			Display: field(object, "keyDisplay"),
+		}
+		if item.Name == "" {
+			item.Name = "API Key"
+		}
+		if item.Display == "" {
+			item.Display = maskAPIKey(key)
+		}
+		keys = append(keys, item)
+	}
+	return keys
+}
+
+func collectObjects(value any, objects *[]map[string]any) {
+	switch value := value.(type) {
+	case []any:
+		for _, item := range value {
+			collectObjects(item, objects)
+		}
+	case map[string]any:
+		*objects = append(*objects, value)
+		for _, item := range value {
+			collectObjects(item, objects)
+		}
+	}
+}
+
+func stringField(object map[string]any, name string) string {
+	value, _ := object[name].(string)
+	return strings.TrimSpace(value)
+}
+
+func maskAPIKey(key string) string {
+	if len(key) <= 10 {
+		return strings.Repeat("•", len(key))
+	}
+	return key[:6] + "••••••" + key[len(key)-4:]
+}
+
 func accountsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -483,12 +928,8 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		input.Name = strings.TrimSpace(input.Name)
 		input.WorkspaceID, input.APIKey, input.AuthCookie = strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.APIKey), strings.TrimSpace(input.AuthCookie)
-		if input.Name == "" {
-			writeError(w, 400, "名称不能为空")
-			return
-		}
 		if input.WorkspaceID == "" || input.AuthCookie == "" {
-			writeError(w, 400, "名称、Workspace ID 和 auth Cookie 均为必填")
+			writeError(w, 400, "Workspace ID 和 auth Cookie 均为必填")
 			return
 		}
 		if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(input.WorkspaceID) {
@@ -504,6 +945,19 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		store.RUnlock()
+		if input.Name == "" || input.APIKey == "" {
+			if discovered, discoverErr := discoverAccount(input.WorkspaceID, input.AuthCookie); discoverErr == nil {
+				if input.Name == "" {
+					input.Name = discovered.Email
+				}
+				if input.APIKey == "" && len(discovered.APIKeys) == 1 {
+					input.APIKey = discovered.APIKeys[0].Key
+				}
+			}
+		}
+		if input.Name == "" {
+			input.Name = input.WorkspaceID
+		}
 		a := Account{ID: "acc-" + strconv.FormatInt(time.Now().UnixNano(), 36), Name: input.Name, Type: "workspace", WorkspaceID: input.WorkspaceID, APIKey: strings.TrimPrefix(input.APIKey, "Bearer "), AuthCookie: input.AuthCookie, Status: "checking"}
 		refreshAccount(&a)
 		store.Lock()
@@ -610,8 +1064,8 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		input.Name, input.WorkspaceID = strings.TrimSpace(input.Name), strings.TrimSpace(input.WorkspaceID)
 		input.APIKey, input.AuthCookie = strings.TrimSpace(input.APIKey), strings.TrimSpace(input.AuthCookie)
-		if input.Name == "" || input.WorkspaceID == "" {
-			writeError(w, 400, "名称和 Workspace ID 均为必填")
+		if input.WorkspaceID == "" {
+			writeError(w, 400, "Workspace ID 为必填")
 			return
 		}
 		if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(input.WorkspaceID) {
@@ -636,7 +1090,10 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a := &store.Accounts[index]
-		a.Name, a.WorkspaceID = input.Name, input.WorkspaceID
+		if input.Name != "" {
+			a.Name = input.Name
+		}
+		a.WorkspaceID = input.WorkspaceID
 		if input.APIKey != "" {
 			a.APIKey = strings.TrimPrefix(input.APIKey, "Bearer ")
 		}
@@ -988,6 +1445,7 @@ func printConsoleHelp() {
 	log.Println("访问地址: http://localhost:8787")
 	log.Println("命令: [O] 打开网页  [R] 刷新额度  [Q] 安全退出  [H] 帮助")
 	log.Printf("账号配置: %s", store.path)
+	log.Printf("登录配置: %s", authDataPath())
 	log.Println(line)
 }
 func readConsoleCommands() {

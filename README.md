@@ -2,7 +2,7 @@
 
 GoQuota 是一个使用 Go 标准库构建的 OpenCode Go / Zen 账号额度监控工具。程序不依赖 OpenCode CLI，通过网页管理多个 Workspace，并直接查询 OpenCode 官方页面和模型接口。
 
-> 当前版本：`0.2.0`
+> 当前版本：`0.3.0`
 
 ## 功能
 
@@ -15,12 +15,14 @@ GoQuota 是一个使用 Go 标准库构建的 OpenCode Go / Zen 账号额度监�
 - Windows 控制台支持打开网页、刷新、帮助和安全退出。
 - 数据与可执行文件放在同一目录，便于迁移和备份。
 - 服务端登录验证、会话管理和登录失败限流。
+- 使用 Workspace ID 与 Cookie 自动识别账号邮箱和本人 API Key。
+- 一个账号存在多个 API Key 时可在添加页面选择使用的 Key。
 
 ## 快速开始
 
 ### Windows
 
-下载 `goquota-0.2.0-windows-amd64.exe`，双击运行，然后访问：
+下载 `goquota-0.3.0-windows-amd64.exe`，双击运行，然后访问：
 
 ```text
 http://localhost:8787
@@ -35,32 +37,24 @@ Q  安全退出
 H  显示帮助
 ```
 
-如果未设置环境变量，控制台会显示本次启动生成的临时用户名和密码。需要固定登录密码时：
-
-```powershell
-$env:GOQUOTA_USERNAME = "admin"
-$env:GOQUOTA_PASSWORD = "请替换为至少12位的强密码"
-.\goquota-0.2.0-windows-amd64.exe
-```
+首次启动时程序会创建 `data/auth.json`，控制台显示一次随机初始密码。登录后请在“设置 → 修改登录凭证”中修改用户名和密码。
 
 ### Linux
 
 ```bash
-chmod +x goquota-0.2.0-linux-amd64
-GOQUOTA_USERNAME=admin GOQUOTA_PASSWORD='请替换为至少12位的强密码' ./goquota-0.2.0-linux-amd64
+chmod +x goquota-0.3.0-linux-amd64
+./goquota-0.3.0-linux-amd64
 ```
 
-ARM64 Ubuntu 使用 `goquota-0.2.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+ARM64 Ubuntu 使用 `goquota-0.3.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
 
 ## 登录安全
 
-| 环境变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `GOQUOTA_USERNAME` | `admin` | 管理登录用户名 |
-| `GOQUOTA_PASSWORD` | 启动时随机生成 | 固定管理密码，至少 12 个字符 |
-| `GOQUOTA_COOKIE_SECURE` | `0` | HTTPS 部署可设为 `1`，强制 Secure Cookie |
+登录配置保存在可执行文件旁的 `data/auth.json`，优先级高于其他来源。密码使用随机盐和 PBKDF2-HMAC-SHA256 哈希保存，不写入明文。
 
-未设置 `GOQUOTA_PASSWORD` 时，每次启动都会生成不同的临时密码并输出到控制台或 systemd 日志。公网部署必须设置固定强密码。
+文件不存在时，程序会创建用户名 `admin` 和随机密码，并在控制台或 systemd 日志中显示一次初始密码。登录后可在网页设置中修改；保存会立即热更新配置，并注销全部旧会话。
+
+HTTPS 部署可设置 `GOQUOTA_COOKIE_SECURE=1`，强制浏览器只通过 HTTPS 发送会话 Cookie。
 
 认证保护覆盖网页、静态资源和全部 `/api/` 接口。会话有效期为 24 小时；Cookie 使用 `HttpOnly` 和 `SameSite=Strict`。
 
@@ -70,12 +64,22 @@ ARM64 Ubuntu 使用 `goquota-0.2.0-linux-arm64`。服务器部署及 systemd 配
 
 | 字段 | 用途 | 是否必填 |
 | --- | --- | --- |
-| 显示名称 | 本地识别账号 | 是 |
+| 显示名称 | 本地识别账号；留空自动使用邮箱 | 否 |
 | Workspace ID | 形如 `wrk_...` | 是 |
-| OpenCode API Key | 查询 Go/Zen 模型目录 | 否，但建议配置 |
+| OpenCode API Key | 查询 Go/Zen 模型目录；留空自动获取 | 否 |
 | `auth` Cookie | 查询 Workspace Go 额度和 Zen 余额 | 是 |
 
-API Key 与网站 Cookie 用途不同。仅有 API Key 不能查询 Workspace 页面中的 Go 额度和 Zen 余额。
+点击“自动识别账号”后，程序会读取当前账号邮箱和该用户本人拥有的完整 API Key。存在多个 Key 时需要选择一个；其他成员的掩码 Key 不会作为候选项。
+
+API Key 与网站 Cookie 用途不同。仅有 API Key 不能查询 Workspace 页面中的 Go 额度和 Zen 余额。自动识别失败时可检查 Cookie 后重试，也可手动填写名称和 API Key。
+
+### 获取 Workspace ID 和 Cookie
+
+1. 使用 GitHub 或 Google 登录 [OpenCode Zen](https://opencode.ai/zen)。
+2. 进入工作区后，从地址栏复制 `workspace/wrk_...` 中的 Workspace ID。
+3. 从浏览器开发者工具的 Cookie 列表复制 `opencode.ai` 的完整 `auth` Cookie。
+
+OpenCode 登录采用 GitHub/Google OAuth，最终会话 Cookie 为 HttpOnly。GoQuota 不保存 GitHub/Google 密码，也无法在纯服务端或 Ubuntu 部署中直接读取浏览器 Cookie，因此目前仍需手动提供 Workspace ID 和 Cookie。
 
 ## 数据目录
 
@@ -83,9 +87,10 @@ API Key 与网站 Cookie 用途不同。仅有 API Key 不能查询 Workspace �
 
 ```text
 data/accounts.json
+data/auth.json
 ```
 
-该文件包含敏感凭证，目前为本地明文存储。请勿上传、分享或提交到 Git；仓库的 `.gitignore` 已默认排除整个 `data/` 目录。
+`accounts.json` 包含 OpenCode 敏感凭证；`auth.json` 包含管理账号和密码哈希。请勿上传、分享或提交到 Git；仓库的 `.gitignore` 已默认排除整个 `data/` 目录。
 
 建议权限：
 
@@ -116,14 +121,15 @@ chmod +x scripts/build.sh
 版本号由根目录 `VERSION` 管理，并通过构建参数写入程序：
 
 ```bash
-./goquota-0.2.0-linux-amd64 --version
+./goquota-0.3.0-linux-amd64 --version
 ```
 
 ## 接口
 
 | 接口 | 方法 | 说明 |
 | --- | --- | --- |
-| `/api/accounts` | GET/POST | 查询或添加账号 |
+| `/api/accounts` | GET/POST | 查询或添加账号（名称和 API Key 可自动获取） |
+| `/api/accounts/discover` | POST | 使用 Workspace ID 与 auth Cookie 自动读取邮箱和本人 API Key |
 | `/api/accounts/{id}` | PUT/DELETE | 编辑或删除账号 |
 | `/api/accounts/{id}/refresh` | POST | 刷新单个账号 |
 | `/api/accounts/{id}/models` | GET | 分别查询 Go/Zen 模型 |

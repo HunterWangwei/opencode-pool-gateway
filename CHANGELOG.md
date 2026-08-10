@@ -2,6 +2,31 @@
 
 本文档记录 GoQuota 的重要变更，版本号遵循 Semantic Versioning。
 
+## [Unreleased]
+
+## [0.3.0] - 2026-08-10
+
+### Added
+
+- 添加账号时显示名称和 API Key 改为可选，可通过 Workspace ID 与 auth Cookie 自动读取账号邮箱。
+- 自动读取当前登录用户本人拥有的完整 API Key；存在多个 Key 时可在网页中选择。
+- 支持解析 OpenCode `key.list` 返回的 Seroval 流式响应，正确提取当前用户拥有的完整 API Key。
+
+### Changed
+
+- 登录凭证改为优先读取程序目录下的 `data/auth.json`。
+- 首次启动自动生成随机初始密码，并将密码哈希写入配置文件。
+- 设置页面可修改登录用户名和密码，保存后立即生效并注销旧会话。
+- 管理密码最小长度调整为 8 个字符。
+- 账号卡片与保存提示明确显示 API Key 是否已配置。
+
+### Fixed
+
+- 自动识别失败时保留手动填写兜底，并明确提示 Cookie 失效或 Workspace 不匹配。
+- 修正 SolidStart 服务函数所需的 Seroval JSON 请求格式，避免将接口错误误判为 Cookie 失效。
+- 识别失败后不会再次点击就静默保存未识别账号。
+- GoQuota 管理会话失效时自动返回登录页，避免将本地 401 错误显示为 OpenCode 账号识别失败。
+
 ## [0.2.0] - 2026-08-10
 
 ### Added

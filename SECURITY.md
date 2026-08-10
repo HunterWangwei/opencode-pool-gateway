@@ -2,7 +2,7 @@
 
 ## Sensitive data
 
-`data/accounts.json` may contain OpenCode API keys and website authentication cookies. Never attach this file to an issue, commit it to Git, or include it in a release archive.
+`data/accounts.json` may contain OpenCode API keys and website authentication cookies. `data/auth.json` contains the administrator username and password hash. Never attach these files to an issue, commit them to Git, or include them in a release archive.
 
 If a credential is exposed:
 

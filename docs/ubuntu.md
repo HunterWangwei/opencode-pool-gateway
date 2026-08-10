@@ -9,25 +9,16 @@ AMD64：
 ```bash
 sudo useradd --system --home /opt/goquota --shell /usr/sbin/nologin goquota
 sudo mkdir -p /opt/goquota/data
-sudo cp goquota-0.2.0-linux-amd64 /opt/goquota/goquota
+sudo cp goquota-0.3.0-linux-amd64 /opt/goquota/goquota
 sudo chown -R goquota:goquota /opt/goquota
 sudo chmod 750 /opt/goquota/goquota /opt/goquota/data
 ```
 
-ARM64 服务器将文件名替换为 `goquota-0.2.0-linux-arm64`。
+ARM64 服务器将文件名替换为 `goquota-0.3.0-linux-arm64`。
 
-创建仅 root 可读的登录环境文件：
+首次启动会在 `/opt/goquota/data/auth.json` 创建登录配置，并在 systemd 日志中显示一次随机初始密码。登录后请在网页“设置”中修改凭证。
 
-```bash
-sudo install -m 600 /dev/null /etc/goquota.env
-sudo sh -c 'cat > /etc/goquota.env' <<'EOF'
-GOQUOTA_USERNAME=admin
-GOQUOTA_PASSWORD=请替换为至少12位的随机强密码
-GOQUOTA_COOKIE_SECURE=1
-EOF
-```
-
-`GOQUOTA_COOKIE_SECURE=1` 要求通过 HTTPS 访问。如果还没有配置 HTTPS，首次调试时可暂时设为 `0`。
+HTTPS 部署可创建 `/etc/goquota.env`，内容为 `GOQUOTA_COOKIE_SECURE=1`。该选项要求通过 HTTPS 访问。
 
 ## systemd
 
@@ -44,7 +35,7 @@ Type=simple
 User=goquota
 Group=goquota
 WorkingDirectory=/opt/goquota
-EnvironmentFile=/etc/goquota.env
+EnvironmentFile=-/etc/goquota.env
 ExecStart=/opt/goquota/goquota
 Restart=on-failure
 RestartSec=5
@@ -92,3 +83,9 @@ sudo systemctl start goquota
 ```
 
 账号数据位于 `/opt/goquota/data/accounts.json`，替换可执行文件不会删除配置。升级前仍建议备份该文件并妥善保护。
+
+## 添加 OpenCode 账号
+
+Ubuntu 服务器无法直接读取用户电脑浏览器中的 HttpOnly Cookie。请先在桌面浏览器通过 GitHub 或 Google 登录 OpenCode，然后手动复制 Workspace ID 和完整 `auth` Cookie 到 GoQuota。
+
+提交这两项后，GoQuota 会自动读取邮箱和当前用户本人拥有的 API Key；如果有多个 Key，需在网页中选择一个。不要在服务器中保存 GitHub 或 Google 密码。

@@ -26,7 +26,8 @@ foreach ($target in $targets) {
 }
 
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue
-Get-FileHash (Join-Path $dist "goquota-$Version-*") -Algorithm SHA256 |
+$artifacts = $targets | ForEach-Object { Join-Path $dist $_.Name }
+Get-FileHash $artifacts -Algorithm SHA256 |
     ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } |
     Set-Content -Encoding ascii (Join-Path $dist "SHA256SUMS.txt")
 
