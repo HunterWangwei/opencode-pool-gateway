@@ -12,7 +12,7 @@ If a credential is exposed:
 
 ## Deployment
 
-GoQuota is intended for localhost or a trusted private network. Do not expose port 8787 directly to the public internet. Use HTTPS and an additional authentication layer when remote access is required.
+OpenCode Pool Gateway is intended for localhost or a trusted private network. Do not expose port 8787 directly to the public internet. Use HTTPS and an additional authentication layer when remote access is required.
 
 ## Reporting
 

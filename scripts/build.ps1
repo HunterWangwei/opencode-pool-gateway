@@ -13,9 +13,9 @@ $ldflags = "-s -w -X main.version=$Version -X main.commit=$commit -X main.buildD
 New-Item -ItemType Directory -Force $dist | Out-Null
 
 $targets = @(
-    @{ GOOS = "windows"; GOARCH = "amd64"; Name = "goquota-$Version-windows-amd64.exe" },
-    @{ GOOS = "linux"; GOARCH = "amd64"; Name = "goquota-$Version-linux-amd64" },
-    @{ GOOS = "linux"; GOARCH = "arm64"; Name = "goquota-$Version-linux-arm64" }
+    @{ GOOS = "windows"; GOARCH = "amd64"; Name = "opencode-pool-gateway-$Version-windows-amd64.exe" },
+    @{ GOOS = "linux"; GOARCH = "amd64"; Name = "opencode-pool-gateway-$Version-linux-amd64" },
+    @{ GOOS = "linux"; GOARCH = "arm64"; Name = "opencode-pool-gateway-$Version-linux-arm64" }
 )
 
 foreach ($target in $targets) {
@@ -31,4 +31,4 @@ Get-FileHash $artifacts -Algorithm SHA256 |
     ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } |
     Set-Content -Encoding ascii (Join-Path $dist "SHA256SUMS.txt")
 
-Write-Host "Built GoQuota $Version in $dist"
+Write-Host "Built OpenCode Pool Gateway $Version in $dist"

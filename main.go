@@ -110,6 +110,8 @@ type Account struct {
 	GoError       string       `json:"goError,omitempty"`
 	ZenError      string       `json:"zenError,omitempty"`
 	LastChecked   time.Time    `json:"lastChecked,omitempty"`
+	Priority      int          `json:"priority"`
+	ProxyURL      string       `json:"proxyUrl,omitempty"`
 }
 
 type PublicAccount struct {
@@ -133,6 +135,8 @@ type PublicAccount struct {
 	LastChecked   time.Time    `json:"lastChecked,omitempty"`
 	HasAPIKey     bool         `json:"hasApiKey"`
 	HasCookie     bool         `json:"hasCookie"`
+	Priority      int          `json:"priority"`
+	ProxyURL      string       `json:"proxyUrl,omitempty"`
 }
 
 type DiscoveredAPIKey struct {
@@ -176,6 +180,9 @@ type authManager struct {
 }
 
 var store accountStore
+var gateway gatewayManager
+var accessTokens tokenManager
+var requestLogs requestLogStore
 var client = &http.Client{Timeout: 18 * time.Second}
 var discoveryServerURL = "https://opencode.ai/_server"
 var shutdownOnce sync.Once
@@ -186,7 +193,7 @@ var buildDate = "unknown"
 
 func main() {
 	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "-version") {
-		fmt.Printf("GoQuota %s (%s, %s)\n", version, commit, buildDate)
+		fmt.Printf("OpenCode Pool Gateway %s (%s, %s)\n", version, commit, buildDate)
 		return
 	}
 	webRoot, err := fs.Sub(webFS, "web")
@@ -196,6 +203,15 @@ func main() {
 	store.path = dataPath()
 	if err := store.load(); err != nil {
 		log.Printf("读取账号配置失败: %v", err)
+	}
+	if err := gateway.load(gatewayDataPath()); err != nil {
+		log.Fatal("读取网关配置失败: ", err)
+	}
+	if err := accessTokens.load(tokenDataPath()); err != nil {
+		log.Fatal("读取访问令牌失败: ", err)
+	}
+	if err := requestLogs.load(requestLogPath()); err != nil {
+		log.Fatal("读取请求日志失败: ", err)
 	}
 	auth, generatedPassword, err := loadAuthManager(authDataPath())
 	if err != nil {
@@ -215,11 +231,18 @@ func main() {
 	appMux.HandleFunc("/api/refresh", refreshHandler)
 	appMux.HandleFunc("/api/auth", auth.credentialsHandler)
 	appMux.HandleFunc("/api/version", versionHandler)
+	appMux.HandleFunc("/api/settings", gateway.settingsHandler)
+	appMux.HandleFunc("/api/tokens", accessTokens.tokensHandler)
+	appMux.HandleFunc("/api/tokens/", accessTokens.tokenHandler)
+	appMux.HandleFunc("/api/logs", requestLogs.logsHandler)
 	appMux.HandleFunc("/api/shutdown", shutdownHandler)
 	appMux.Handle("/", http.FileServer(http.FS(webRoot)))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", auth.loginHandler)
 	mux.HandleFunc("/logout", auth.logoutHandler)
+	for _, route := range gatewayRoutes {
+		mux.Handle(route, accessTokens.requireToken(http.HandlerFunc(gateway.proxyHandler)))
+	}
 	mux.Handle("/", auth.requireAuth(appMux))
 
 	server := &http.Server{Addr: listenAddr, Handler: securityHeaders(mux), ReadHeaderTimeout: 10 * time.Second}
@@ -236,7 +259,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_ = server.Shutdown(ctx)
-	log.Println("GoQuota 已安全退出")
+	log.Println("OpenCode Pool Gateway 已安全退出")
 }
 
 func loadAuthManager(path string) (*authManager, string, error) {
@@ -288,7 +311,7 @@ func (a *authManager) requireAuth(next http.Handler) http.Handler {
 }
 
 func (a *authManager) authenticated(r *http.Request) bool {
-	cookie, err := r.Cookie("goquota_session")
+	cookie, err := r.Cookie("opg_session")
 	if err != nil || cookie.Value == "" {
 		return false
 	}
@@ -361,7 +384,7 @@ func (a *authManager) loginHandler(w http.ResponseWriter, r *http.Request) {
 	token := randomToken(32)
 	a.sessions[token] = time.Now().Add(24 * time.Hour)
 	a.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: "goquota_session", Value: token, Path: "/", MaxAge: 86400, HttpOnly: true, Secure: requestIsHTTPS(r), SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: "opg_session", Value: token, Path: "/", MaxAge: 86400, HttpOnly: true, Secure: requestIsHTTPS(r), SameSite: http.SameSiteStrictMode})
 	nextURL := safeNext(r.FormValue("next"))
 	http.Redirect(w, r, nextURL, http.StatusSeeOther)
 }
@@ -414,12 +437,12 @@ func (a *authManager) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	if cookie, err := r.Cookie("goquota_session"); err == nil {
+	if cookie, err := r.Cookie("opg_session"); err == nil {
 		a.Lock()
 		delete(a.sessions, cookie.Value)
 		a.Unlock()
 	}
-	http.SetCookie(w, &http.Cookie{Name: "goquota_session", Path: "/", MaxAge: -1, HttpOnly: true, Secure: requestIsHTTPS(r), SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: "opg_session", Path: "/", MaxAge: -1, HttpOnly: true, Secure: requestIsHTTPS(r), SameSite: http.SameSiteStrictMode})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -560,7 +583,7 @@ func safeNext(value string) string {
 }
 
 func requestIsHTTPS(r *http.Request) bool {
-	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || os.Getenv("GOQUOTA_COOKIE_SECURE") == "1"
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || os.Getenv("OPG_COOKIE_SECURE") == "1"
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -593,12 +616,16 @@ func authDataPath() string {
 	return filepath.Join(filepath.Dir(dataPath()), "auth.json")
 }
 
+func gatewayDataPath() string { return filepath.Join(filepath.Dir(dataPath()), "gateway.json") }
+func tokenDataPath() string   { return filepath.Join(filepath.Dir(dataPath()), "tokens.json") }
+func requestLogPath() string  { return filepath.Join(filepath.Dir(dataPath()), "requests.jsonl") }
+
 func legacyDataPath() string {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "GoQuota", "accounts.json")
+	return filepath.Join(dir, "OpenCode Pool Gateway", "accounts.json")
 }
 
 func (s *accountStore) load() error {
@@ -921,13 +948,23 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, publicAccounts())
 	case http.MethodPost:
-		var input struct{ Name, WorkspaceID, APIKey, AuthCookie string }
+		var input struct {
+			Name, WorkspaceID, APIKey, AuthCookie, ProxyURL string
+			Priority                                        int
+		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
 			writeError(w, 400, "请求数据无效")
 			return
 		}
 		input.Name = strings.TrimSpace(input.Name)
 		input.WorkspaceID, input.APIKey, input.AuthCookie = strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.APIKey), strings.TrimSpace(input.AuthCookie)
+		input.ProxyURL = strings.TrimSpace(input.ProxyURL)
+		if input.ProxyURL != "" {
+			if err := validateProxy(input.ProxyURL); err != nil {
+				writeError(w, 400, err.Error())
+				return
+			}
+		}
 		if input.WorkspaceID == "" || input.AuthCookie == "" {
 			writeError(w, 400, "Workspace ID 和 auth Cookie 均为必填")
 			return
@@ -958,7 +995,7 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 		if input.Name == "" {
 			input.Name = input.WorkspaceID
 		}
-		a := Account{ID: "acc-" + strconv.FormatInt(time.Now().UnixNano(), 36), Name: input.Name, Type: "workspace", WorkspaceID: input.WorkspaceID, APIKey: strings.TrimPrefix(input.APIKey, "Bearer "), AuthCookie: input.AuthCookie, Status: "checking"}
+		a := Account{ID: "acc-" + strconv.FormatInt(time.Now().UnixNano(), 36), Name: input.Name, Type: "workspace", WorkspaceID: input.WorkspaceID, APIKey: strings.TrimPrefix(input.APIKey, "Bearer "), AuthCookie: input.AuthCookie, Status: "checking", Priority: input.Priority, ProxyURL: input.ProxyURL}
 		refreshAccount(&a)
 		store.Lock()
 		store.Accounts = append(store.Accounts, a)
@@ -1057,13 +1094,23 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, 404, "账号不存在")
 	case http.MethodPut:
-		var input struct{ Name, WorkspaceID, APIKey, AuthCookie string }
+		var input struct {
+			Name, WorkspaceID, APIKey, AuthCookie, ProxyURL string
+			Priority                                        int
+		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
 			writeError(w, 400, "请求数据无效")
 			return
 		}
 		input.Name, input.WorkspaceID = strings.TrimSpace(input.Name), strings.TrimSpace(input.WorkspaceID)
 		input.APIKey, input.AuthCookie = strings.TrimSpace(input.APIKey), strings.TrimSpace(input.AuthCookie)
+		input.ProxyURL = strings.TrimSpace(input.ProxyURL)
+		if input.ProxyURL != "" {
+			if err := validateProxy(input.ProxyURL); err != nil {
+				writeError(w, 400, err.Error())
+				return
+			}
+		}
 		if input.WorkspaceID == "" {
 			writeError(w, 400, "Workspace ID 为必填")
 			return
@@ -1094,6 +1141,7 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 			a.Name = input.Name
 		}
 		a.WorkspaceID = input.WorkspaceID
+		a.Priority, a.ProxyURL = input.Priority, input.ProxyURL
 		if input.APIKey != "" {
 			a.APIKey = strings.TrimPrefix(input.APIKey, "Bearer ")
 		}
@@ -1408,6 +1456,7 @@ func toPublic(a Account) PublicAccount {
 		ZenBalance: a.ZenBalance, GoAvailable: a.GoAvailable, ZenAvailable: a.ZenAvailable,
 		GoError: a.GoError, ZenError: a.ZenError,
 		LastChecked: a.LastChecked, HasAPIKey: a.APIKey != "", HasCookie: a.AuthCookie != "",
+		Priority: a.Priority, ProxyURL: a.ProxyURL,
 	}
 }
 func shortBody(b []byte) string {
@@ -1441,7 +1490,7 @@ func refreshScheduler() {
 func printConsoleHelp() {
 	line := strings.Repeat("=", 52)
 	log.Println(line)
-	log.Println("GoQuota 真实额度监控已启动")
+	log.Println("OpenCode Pool Gateway 真实额度监控已启动")
 	log.Println("访问地址: http://localhost:8787")
 	log.Println("命令: [O] 打开网页  [R] 刷新额度  [Q] 安全退出  [H] 帮助")
 	log.Printf("账号配置: %s", store.path)

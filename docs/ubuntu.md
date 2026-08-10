@@ -1,48 +1,48 @@
 # Ubuntu 部署
 
-以下示例将 GoQuota 安装在 `/opt/goquota`，并通过 systemd 运行。
+以下示例将 OpenCode Pool Gateway 安装在 `/opt/opencode-pool-gateway`，并通过 systemd 运行。
 
 ## 安装
 
 AMD64：
 
 ```bash
-sudo useradd --system --home /opt/goquota --shell /usr/sbin/nologin goquota
-sudo mkdir -p /opt/goquota/data
-sudo cp goquota-0.3.0-linux-amd64 /opt/goquota/goquota
-sudo chown -R goquota:goquota /opt/goquota
-sudo chmod 750 /opt/goquota/goquota /opt/goquota/data
+sudo useradd --system --home /opt/opencode-pool-gateway --shell /usr/sbin/nologin opencode-pool-gateway
+sudo mkdir -p /opt/opencode-pool-gateway/data
+sudo cp opencode-pool-gateway-0.4.0-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo chown -R opencode-pool-gateway:opencode-pool-gateway /opt/opencode-pool-gateway
+sudo chmod 750 /opt/opencode-pool-gateway/opencode-pool-gateway /opt/opencode-pool-gateway/data
 ```
 
-ARM64 服务器将文件名替换为 `goquota-0.3.0-linux-arm64`。
+ARM64 服务器将文件名替换为 `opencode-pool-gateway-0.4.0-linux-arm64`。
 
-首次启动会在 `/opt/goquota/data/auth.json` 创建登录配置，并在 systemd 日志中显示一次随机初始密码。登录后请在网页“设置”中修改凭证。
+首次启动会在 `/opt/opencode-pool-gateway/data/auth.json` 创建登录配置，并在 systemd 日志中显示一次随机初始密码。登录后请在网页“设置”中修改凭证。
 
-HTTPS 部署可创建 `/etc/goquota.env`，内容为 `GOQUOTA_COOKIE_SECURE=1`。该选项要求通过 HTTPS 访问。
+HTTPS 部署可创建 `/etc/opencode-pool-gateway.env`，内容为 `OPG_COOKIE_SECURE=1`。该选项要求通过 HTTPS 访问。
 
 ## systemd
 
-创建 `/etc/systemd/system/goquota.service`：
+创建 `/etc/systemd/system/opencode-pool-gateway.service`：
 
 ```ini
 [Unit]
-Description=GoQuota OpenCode quota monitor
+Description=OpenCode account pool and API gateway
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=goquota
-Group=goquota
-WorkingDirectory=/opt/goquota
-EnvironmentFile=-/etc/goquota.env
-ExecStart=/opt/goquota/goquota
+User=opencode-pool-gateway
+Group=opencode-pool-gateway
+WorkingDirectory=/opt/opencode-pool-gateway
+EnvironmentFile=-/etc/opencode-pool-gateway.env
+ExecStart=/opt/opencode-pool-gateway/opencode-pool-gateway
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/opt/goquota/data
+ReadWritePaths=/opt/opencode-pool-gateway/data
 
 [Install]
 WantedBy=multi-user.target
@@ -52,19 +52,19 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now goquota
-sudo systemctl status goquota
+sudo systemctl enable --now opencode-pool-gateway
+sudo systemctl status opencode-pool-gateway
 ```
 
 查看日志：
 
 ```bash
-journalctl -u goquota -f
+journalctl -u opencode-pool-gateway -f
 ```
 
 ## 网络安全
 
-GoQuota 当前监听 `8787` 端口，应用自身已提供登录验证。公网部署仍必须使用 HTTPS，优先使用以下方式之一：
+OpenCode Pool Gateway 当前监听 `8787` 端口，应用自身已提供登录验证。公网部署仍必须使用 HTTPS，优先使用以下方式之一：
 
 - SSH 端口转发：`ssh -L 8787:127.0.0.1:8787 user@server`
 - 仅允许可信内网或 VPN 访问。
@@ -75,17 +75,17 @@ GoQuota 当前监听 `8787` 端口，应用自身已提供登录验证。公网�
 ## 升级
 
 ```bash
-sudo systemctl stop goquota
-sudo cp goquota-NEW-linux-amd64 /opt/goquota/goquota
-sudo chown goquota:goquota /opt/goquota/goquota
-sudo chmod 750 /opt/goquota/goquota
-sudo systemctl start goquota
+sudo systemctl stop opencode-pool-gateway
+sudo cp opencode-pool-gateway-NEW-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo chown opencode-pool-gateway:opencode-pool-gateway /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo chmod 750 /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo systemctl start opencode-pool-gateway
 ```
 
-账号数据位于 `/opt/goquota/data/accounts.json`，替换可执行文件不会删除配置。升级前仍建议备份该文件并妥善保护。
+全部配置和日志位于 `/opt/opencode-pool-gateway/data/`，替换可执行文件不会删除配置。升级前仍建议备份该目录并妥善保护。
 
 ## 添加 OpenCode 账号
 
-Ubuntu 服务器无法直接读取用户电脑浏览器中的 HttpOnly Cookie。请先在桌面浏览器通过 GitHub 或 Google 登录 OpenCode，然后手动复制 Workspace ID 和完整 `auth` Cookie 到 GoQuota。
+Ubuntu 服务器无法直接读取用户电脑浏览器中的 HttpOnly Cookie。请先在桌面浏览器通过 GitHub 或 Google 登录 OpenCode，然后手动复制 Workspace ID 和完整 `auth` Cookie 到 OpenCode Pool Gateway。
 
-提交这两项后，GoQuota 会自动读取邮箱和当前用户本人拥有的 API Key；如果有多个 Key，需在网页中选择一个。不要在服务器中保存 GitHub 或 Google 密码。
+提交这两项后，OpenCode Pool Gateway 会自动读取邮箱和当前用户本人拥有的 API Key；如果有多个 Key，需在网页中选择一个。不要在服务器中保存 GitHub 或 Google 密码。

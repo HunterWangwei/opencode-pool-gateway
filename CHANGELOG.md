@@ -1,8 +1,28 @@
 # Changelog
 
-本文档记录 GoQuota 的重要变更，版本号遵循 Semantic Versioning。
+本文档记录 OpenCode Pool Gateway 的重要变更，版本号遵循 Semantic Versioning。
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-08-10
+
+### Added
+
+- 新增 OpenCode API 透明转发，兼容 Go Chat Completions、Go Models、Zen Responses 与 Zen Models 路由。
+- 新增负载均衡轮询和优先级故障转移模式，并支持最大尝试次数配置。
+- 账号凭证新增优先级与独立 HTTP/HTTPS 代理，全局代理可在设置页热更新。
+- 新增本站访问令牌管理，令牌只在创建时显示明文，磁盘仅保存 SHA-256 摘要。
+- 新增请求日志页，记录凭证、模型、Token 用量、缓存读写、耗时和脱敏错误报文。
+
+### Changed
+
+- 项目由 GoQuota / `opencode-go-quota-monitor` 更名为 OpenCode Pool Gateway / `opencode-pool-gateway`，以准确反映账号池、API 网关和故障转移能力。
+- 可执行文件、Go module、网页品牌、部署目录、systemd 服务和环境变量统一使用新名称。
+
+### Security
+
+- 第三方客户端令牌不会转发到 OpenCode，上游只接收所选账号的 API Key。
+- 日志不记录 API Key、Cookie 或完整本站访问令牌。
 
 ## [0.3.0] - 2026-08-10
 
@@ -25,7 +45,7 @@
 - 自动识别失败时保留手动填写兜底，并明确提示 Cookie 失效或 Workspace 不匹配。
 - 修正 SolidStart 服务函数所需的 Seroval JSON 请求格式，避免将接口错误误判为 Cookie 失效。
 - 识别失败后不会再次点击就静默保存未识别账号。
-- GoQuota 管理会话失效时自动返回登录页，避免将本地 401 错误显示为 OpenCode 账号识别失败。
+- OpenCode Pool Gateway 管理会话失效时自动返回登录页，避免将本地 401 错误显示为 OpenCode 账号识别失败。
 
 ## [0.2.0] - 2026-08-10
 
@@ -34,7 +54,7 @@
 - 服务端登录验证，未认证用户无法访问页面和 API。
 - 24 小时 HttpOnly、SameSite 会话 Cookie。
 - 单 IP 登录失败限流：5 次失败后锁定 5 分钟。
-- `GOQUOTA_USERNAME`、`GOQUOTA_PASSWORD` 和 `GOQUOTA_COOKIE_SECURE` 部署配置。
+- `OPG_USERNAME`、`OPG_PASSWORD` 和 `OPG_COOKIE_SECURE` 部署配置。
 - 网页退出登录入口和基础安全响应头。
 
 ## [0.1.0] - 2026-08-10

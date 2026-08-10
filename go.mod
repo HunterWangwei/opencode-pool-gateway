@@ -1,3 +1,3 @@
-module opencode-quota-monitor
+module opencode-pool-gateway
 
 go 1.22
