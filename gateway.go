@@ -20,7 +20,17 @@ import (
 	"time"
 )
 
-var gatewayRoutes = []string{"/zen/go/v1/chat/completions", "/zen/go/v1/models", "/zen/v1/responses", "/zen/v1/models"}
+var gatewayRoutes = []string{
+	"/zen/go/v1/chat/completions",
+	"/zen/go/v1/responses",
+	"/zen/go/v1/messages",
+	"/zen/go/v1/models",
+	"/zen/v1/responses",
+	"/zen/v1/messages",
+	"/zen/v1/chat/completions",
+	"/zen/v1/models",
+	"/zen/v1/models/",
+}
 var gatewayUpstream = "https://opencode.ai"
 
 type GatewayConfig struct {
@@ -434,6 +444,14 @@ func modelFromBody(b []byte) string {
 	_ = json.Unmarshal(b, &x)
 	return x.Model
 }
+func requestModel(path string, body []byte) string {
+	if strings.HasPrefix(path, "/zen/v1/models/") {
+		model := strings.TrimPrefix(path, "/zen/v1/models/")
+		model, _, _ = strings.Cut(model, ":")
+		return model
+	}
+	return modelFromBody(body)
+}
 func usageFromBody(b []byte) (in, out, read, write int64) {
 	var x map[string]any
 	if json.Unmarshal(b, &x) != nil {
@@ -454,6 +472,17 @@ func usageFromBody(b []byte) (in, out, read, write int64) {
 	write = num("cache_creation_input_tokens", "cache_write_tokens")
 	if d, ok := u["input_tokens_details"].(map[string]any); ok {
 		if v, ok := d["cached_tokens"].(float64); ok {
+			read = int64(v)
+		}
+	}
+	if metadata, ok := x["usageMetadata"].(map[string]any); ok {
+		if v, ok := metadata["promptTokenCount"].(float64); ok {
+			in = int64(v)
+		}
+		if v, ok := metadata["candidatesTokenCount"].(float64); ok {
+			out = int64(v)
+		}
+		if v, ok := metadata["cachedContentTokenCount"].(float64); ok {
 			read = int64(v)
 		}
 	}
@@ -479,7 +508,7 @@ func (g *gatewayManager) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 503, "没有可用的 OpenCode API Key 凭证")
 		return
 	}
-	model := modelFromBody(body)
+	model := requestModel(r.URL.Path, body)
 	var lastStatus int
 	var lastHeader http.Header
 	var lastBody []byte

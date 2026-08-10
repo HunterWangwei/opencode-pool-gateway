@@ -69,3 +69,51 @@ func TestCleanErrorRedactsSecrets(t *testing.T) {
 		t.Fatalf("secret leaked: %s", got)
 	}
 }
+
+func TestZenProtocolRoutes(t *testing.T) {
+	want := map[string]bool{
+		"/zen/v1/responses":        true,
+		"/zen/v1/messages":         true,
+		"/zen/v1/chat/completions": true,
+		"/zen/v1/models":           true,
+		"/zen/v1/models/":          true,
+	}
+	for _, route := range gatewayRoutes {
+		delete(want, route)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing Zen routes: %+v", want)
+	}
+	if got := requestModel("/zen/v1/models/gemini-3.6-flash", nil); got != "gemini-3.6-flash" {
+		t.Fatalf("unexpected Gemini model: %q", got)
+	}
+	if got := requestModel("/zen/v1/models/gemini-3.6-flash:generateContent", nil); got != "gemini-3.6-flash" {
+		t.Fatalf("unexpected Gemini action model: %q", got)
+	}
+}
+
+func TestGoProtocolRoutes(t *testing.T) {
+	want := map[string]bool{
+		"/zen/go/v1/chat/completions": true,
+		"/zen/go/v1/responses":        true,
+		"/zen/go/v1/messages":         true,
+		"/zen/go/v1/models":           true,
+	}
+	for _, route := range gatewayRoutes {
+		delete(want, route)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing Go routes: %+v", want)
+	}
+}
+
+func TestUsageFromAnthropicAndGemini(t *testing.T) {
+	in, out, read, write := usageFromBody([]byte(`{"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":3,"cache_creation_input_tokens":4}}`))
+	if in != 10 || out != 20 || read != 3 || write != 4 {
+		t.Fatalf("unexpected Anthropic usage: %d %d %d %d", in, out, read, write)
+	}
+	in, out, read, write = usageFromBody([]byte(`{"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":22,"cachedContentTokenCount":5}}`))
+	if in != 11 || out != 22 || read != 5 || write != 0 {
+		t.Fatalf("unexpected Gemini usage: %d %d %d %d", in, out, read, write)
+	}
+}

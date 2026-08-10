@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-10
+
+### Added
+
+- Zen 网关新增 Anthropic Messages、OpenAI-compatible Chat Completions 和 Gemini 动态模型路由。
+- Go 网关新增 OpenAI Responses 与 Anthropic Messages 路由。
+- 请求日志新增 Anthropic 与 Gemini 用量字段解析，并可从 Gemini URL 记录模型 ID。
+
 ## [0.4.0] - 2026-08-10
 
 ### Added

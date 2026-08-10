@@ -9,12 +9,12 @@ AMD64：
 ```bash
 sudo useradd --system --home /opt/opencode-pool-gateway --shell /usr/sbin/nologin opencode-pool-gateway
 sudo mkdir -p /opt/opencode-pool-gateway/data
-sudo cp opencode-pool-gateway-0.4.0-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo cp opencode-pool-gateway-0.4.1-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
 sudo chown -R opencode-pool-gateway:opencode-pool-gateway /opt/opencode-pool-gateway
 sudo chmod 750 /opt/opencode-pool-gateway/opencode-pool-gateway /opt/opencode-pool-gateway/data
 ```
 
-ARM64 服务器将文件名替换为 `opencode-pool-gateway-0.4.0-linux-arm64`。
+ARM64 服务器将文件名替换为 `opencode-pool-gateway-0.4.1-linux-arm64`。
 
 首次启动会在 `/opt/opencode-pool-gateway/data/auth.json` 创建登录配置，并在 systemd 日志中显示一次随机初始密码。登录后请在网页“设置”中修改凭证。
 
@@ -71,6 +71,12 @@ OpenCode Pool Gateway 当前监听 `8787` 端口，应用自身已提供登录�
 - 使用 Caddy/Nginx 配置 HTTPS，并转发 `X-Forwarded-Proto`。
 
 通过 SSH 转发后，在本机访问 `http://localhost:8787`。
+
+## 网关接入
+
+在网页“令牌管理”中创建本站访问令牌，再将第三方客户端的 API 地址指向服务器域名对应的 Go 或 Zen 路由。客户端发送的 Bearer Token 只用于 OpenCode Pool Gateway 鉴权，上游请求会自动换成账号池中选定凭证的 OpenCode API Key。
+
+公网部署必须通过 HTTPS。反向代理需要保留请求方法、路径、查询参数、请求体和流式响应，并允许较长连接时间。
 
 ## 升级
 

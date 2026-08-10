@@ -1,6 +1,6 @@
 # OpenCode Pool Gateway
 
-当前版本：`0.4.0`
+当前版本：`0.4.1`
 
 ## API 转发网关
 
@@ -9,11 +9,60 @@
 支持路由：
 
 - `/zen/go/v1/chat/completions`
+- `/zen/go/v1/responses`
+- `/zen/go/v1/messages`
 - `/zen/go/v1/models`
 - `/zen/v1/responses`
+- `/zen/v1/messages`
+- `/zen/v1/chat/completions`
 - `/zen/v1/models`
+- `/zen/v1/models/<model-id>`（Gemini 原生协议）
+
+Zen 模型协议对应关系：
+
+| 协议 | 模型类型 | 路由 |
+| --- | --- | --- |
+| OpenAI Responses | GPT、Grok | `/zen/v1/responses` |
+| Anthropic Messages | Claude、Qwen | `/zen/v1/messages` |
+| Google Generative Language | Gemini | `/zen/v1/models/<model-id>` |
+| OpenAI-compatible Chat Completions | DeepSeek、MiniMax、GLM、Kimi 等 | `/zen/v1/chat/completions` |
+
+Go 模型协议对应关系：
+
+| 协议 | 模型类型 | 路由 |
+| --- | --- | --- |
+| OpenAI Responses | GPT 5.6 Luna | `/zen/go/v1/responses` |
+| Anthropic Messages | MiniMax M3/M2.7/M2.5、Qwen 3.8/3.7/3.6 | `/zen/go/v1/messages` |
+| OpenAI-compatible Chat Completions | Grok、GLM、Kimi、DeepSeek、MiMo、Hy3 等 | `/zen/go/v1/chat/completions` |
+| Models | Go 完整模型目录 | `/zen/go/v1/models` |
 
 设置页可切换轮询负载均衡与优先级故障转移。最大尝试次数为 `0` 时，每次请求最多尝试所有可用凭证一次。代理支持 `http://` 与 `https://`，账号独立代理优先于全局代理。
+
+### 客户端接入
+
+1. 在“令牌管理”页面创建本站访问令牌。
+2. 将第三方客户端的 Base URL 指向 OpenCode Pool Gateway，例如 `http://127.0.0.1:8787/zen/v1`。
+3. 将本站令牌填写为客户端 API Key。网关验证本站令牌后选择账号池中的 OpenCode API Key 请求上游，第三方令牌不会发送给 OpenCode。
+
+Responses 示例：
+
+```bash
+curl http://127.0.0.1:8787/zen/v1/responses \
+  -H "Authorization: Bearer gq_your_gateway_token" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-5.2","input":"Hello"}'
+```
+
+Anthropic Messages 示例：
+
+```bash
+curl http://127.0.0.1:8787/zen/v1/messages \
+  -H "Authorization: Bearer gq_your_gateway_token" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-sonnet-4","max_tokens":256,"messages":[{"role":"user","content":"Hello"}]}'
+```
+
+Gemini 客户端应保留模型路径和动作后缀，例如 `/zen/v1/models/gemini-3.6-flash:generateContent`。查询参数、请求体及除鉴权外的业务请求头均原样透传。
 
 OpenCode Pool Gateway 是一个使用 Go 标准库构建的 OpenCode Go / Zen 账号池管理与 API 转发网关。它不依赖 OpenCode CLI，可集中管理多个 Workspace，查询额度与模型，并向第三方客户端提供带鉴权、调度、故障转移和代理支持的兼容接口。
 
@@ -40,7 +89,7 @@ OpenCode Pool Gateway 是一个使用 Go 标准库构建的 OpenCode Go / Zen �
 
 ### Windows
 
-下载 `opencode-pool-gateway-0.4.0-windows-amd64.exe`，双击运行，然后访问：
+下载 `opencode-pool-gateway-0.4.1-windows-amd64.exe`，双击运行，然后访问：
 
 ```text
 http://localhost:8787
@@ -60,11 +109,11 @@ H  显示帮助
 ### Linux
 
 ```bash
-chmod +x opencode-pool-gateway-0.4.0-linux-amd64
-./opencode-pool-gateway-0.4.0-linux-amd64
+chmod +x opencode-pool-gateway-0.4.1-linux-amd64
+./opencode-pool-gateway-0.4.1-linux-amd64
 ```
 
-ARM64 Ubuntu 使用 `opencode-pool-gateway-0.4.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+ARM64 Ubuntu 使用 `opencode-pool-gateway-0.4.1-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
 
 ## 登录安全
 
@@ -142,7 +191,7 @@ chmod +x scripts/build.sh
 版本号由根目录 `VERSION` 管理，并通过构建参数写入程序：
 
 ```bash
-./opencode-pool-gateway-0.4.0-linux-amd64 --version
+./opencode-pool-gateway-0.4.1-linux-amd64 --version
 ```
 
 ## 接口
