@@ -9,12 +9,12 @@ AMD64：
 ```bash
 sudo useradd --system --home /opt/opencode-pool-gateway --shell /usr/sbin/nologin opencode-pool-gateway
 sudo mkdir -p /opt/opencode-pool-gateway/data
-sudo cp opencode-pool-gateway-0.4.1-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo cp opencode-pool-gateway-0.4.2-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
 sudo chown -R opencode-pool-gateway:opencode-pool-gateway /opt/opencode-pool-gateway
 sudo chmod 750 /opt/opencode-pool-gateway/opencode-pool-gateway /opt/opencode-pool-gateway/data
 ```
 
-ARM64 服务器将文件名替换为 `opencode-pool-gateway-0.4.1-linux-arm64`。
+ARM64 服务器将文件名替换为 `opencode-pool-gateway-0.4.2-linux-arm64`。
 
 首次启动会在 `/opt/opencode-pool-gateway/data/auth.json` 创建登录配置，并在 systemd 日志中显示一次随机初始密码。登录后请在网页“设置”中修改凭证。
 

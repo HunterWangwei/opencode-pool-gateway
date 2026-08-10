@@ -18,3 +18,20 @@ input[type=range]{padding:0;border:0;accent-color:var(--green)}select{display:bl
 .session-zone{display:flex;align-items:center;justify-content:space-between;margin-top:28px;padding-top:22px;border-top:1px solid var(--line)}.session-zone b{display:block;font-size:11px}.session-zone small{display:block;margin-top:4px;color:var(--muted);font-weight:400}.session-zone form{margin:0}.session-zone button{height:38px}
 .credential-settings{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.credential-settings h3{margin:0;font-size:13px}.credential-settings p{margin:5px 0 0;color:var(--muted);font-size:10px}.credential-settings code{color:var(--ink)}.credential-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}.credential-grid label{margin-top:15px}.credential-settings>.primary{height:38px;margin-top:16px}@media(max-width:600px){.credential-grid{grid-template-columns:1fr}}
 .table-wrap{overflow:auto}.table-panel table{width:100%;border-collapse:collapse;font-size:11px}.table-panel th,.table-panel td{padding:13px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}.table-panel th{color:var(--muted);font-size:10px}.table-panel td small,.token-row small,.table-panel td code{display:block;margin-top:5px;color:var(--muted)}.table-panel pre{max-width:420px;max-height:180px;overflow:auto;white-space:pre-wrap;color:var(--red);font-size:10px}.http-status.bad{color:var(--red)}.token-list{padding:0 22px}.token-row{display:flex;justify-content:space-between;align-items:center;padding:18px 0;border-bottom:1px solid var(--line)}.token-row:last-child{border:0}.token-row code{margin-left:12px}.gateway-settings{margin-top:0!important;margin-bottom:24px}.gateway-account-fields{margin-top:4px}
+
+#view-settings .settings-panel.narrow{max-width:none}
+#view-settings .form-body{padding:0}
+.settings-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+.settings-column{min-width:0;padding:26px 28px 30px}
+.security-column{border-left:1px solid var(--line)}
+.settings-column>.credential-settings:first-child{margin-top:0;padding-top:0;border-top:0}
+.gateway-column>label{margin-bottom:22px}
+.gateway-column>label:last-child{margin-bottom:0}
+@media(max-width:1050px){.settings-workspace{grid-template-columns:1fr}.security-column{border-left:0;border-top:1px solid var(--line)}}
+
+/* Keep navigation and service status anchored while long views scroll. */
+.shell{display:block}
+aside{position:fixed;inset:0 auto 0 0;height:100vh;overflow-y:auto;z-index:20}
+main{width:calc(100% - 224px);margin:0 0 0 224px}
+@media(max-width:900px) and (min-width:601px){main{width:calc(100% - 190px);margin-left:190px}}
+@media(max-width:600px){main{width:100%;margin-left:0}}

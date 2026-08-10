@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-10
+
+### Added
+
+- 全局代理和单凭证代理新增带用户名密码认证的 SOCKS5 支持。
+
+### Changed
+
+- 设置页改为响应式双栏布局，充分利用桌面端可用宽度。
+- 桌面端侧栏固定在视口左侧，服务状态、同步时间和版本号不再随内容滚动。
+- 请求耗时改为毫秒、秒、分秒三级自适应显示。
+
+### Fixed
+
+- 修复空请求日志或空令牌列表返回 `null` 导致页面读取 `length` 失败的问题。
+- 请求日志新增 gzip 与 SSE 响应解析，可从流式请求中提取 Token 用量。
+- 同时识别 Chat Completions 的 `prompt_tokens_details.cached_tokens` 和 Responses 的 `input_tokens_details.cached_tokens`。
+
+### Dependencies
+
+- 新增 `golang.org/x/net/proxy`，用于标准 SOCKS5 与用户名密码认证。
+
 ## [0.4.1] - 2026-08-10
 
 ### Added

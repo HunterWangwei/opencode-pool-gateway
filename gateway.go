@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,6 +21,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	xproxy "golang.org/x/net/proxy"
 )
 
 var gatewayRoutes = []string{
@@ -127,8 +132,8 @@ func validateGateway(c *GatewayConfig) error {
 }
 func validateProxy(raw string) error {
 	u, e := url.Parse(raw)
-	if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return errors.New("代理地址仅支持 http:// 或 https://")
+	if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5") {
+		return errors.New("代理地址仅支持 http://、https:// 或 socks5://")
 	}
 	return nil
 }
@@ -179,7 +184,7 @@ func (t *tokenManager) load(path string) error {
 func (t *tokenManager) public() []AccessToken {
 	t.RLock()
 	defer t.RUnlock()
-	out := append([]AccessToken(nil), t.Tokens...)
+	out := append([]AccessToken{}, t.Tokens...)
 	for i := range out {
 		out[i].TokenHash = ""
 	}
@@ -358,7 +363,7 @@ func (l *requestLogStore) logsHandler(w http.ResponseWriter, r *http.Request) {
 	if start < 0 {
 		start = 0
 	}
-	out := append([]RequestLog(nil), l.Logs[start:]...)
+	out := append([]RequestLog{}, l.Logs[start:]...)
 	l.RUnlock()
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
@@ -431,6 +436,26 @@ func transportFor(raw string) (*http.Transport, error) {
 	if e != nil {
 		return nil, e
 	}
+	if u.Scheme == "socks5" {
+		var auth *xproxy.Auth
+		if u.User != nil {
+			password, _ := u.User.Password()
+			auth = &xproxy.Auth{User: u.User.Username(), Password: password}
+		}
+		dialer, err := xproxy.SOCKS5("tcp", u.Host, auth, &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second})
+		if err != nil {
+			return nil, err
+		}
+		tr.Proxy = nil
+		if contextDialer, ok := dialer.(xproxy.ContextDialer); ok {
+			tr.DialContext = contextDialer.DialContext
+		} else {
+			tr.DialContext = func(_ context.Context, network, address string) (net.Conn, error) {
+				return dialer.Dial(network, address)
+			}
+		}
+		return tr, nil
+	}
 	tr.Proxy = http.ProxyURL(u)
 	return tr, nil
 }
@@ -455,6 +480,20 @@ func requestModel(path string, body []byte) string {
 func usageFromBody(b []byte) (in, out, read, write int64) {
 	var x map[string]any
 	if json.Unmarshal(b, &x) != nil {
+		for _, line := range bytes.Split(b, []byte("\n")) {
+			line = bytes.TrimSpace(line)
+			if !bytes.HasPrefix(line, []byte("data:")) {
+				continue
+			}
+			data := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
+			if bytes.Equal(data, []byte("[DONE]")) {
+				continue
+			}
+			i, o, r, w := usageFromBody(data)
+			if i != 0 || o != 0 || r != 0 || w != 0 {
+				in, out, read, write = i, o, r, w
+			}
+		}
 		return
 	}
 	u, _ := x["usage"].(map[string]any)
@@ -475,6 +514,11 @@ func usageFromBody(b []byte) (in, out, read, write int64) {
 			read = int64(v)
 		}
 	}
+	if d, ok := u["prompt_tokens_details"].(map[string]any); ok {
+		if v, ok := d["cached_tokens"].(float64); ok {
+			read = int64(v)
+		}
+	}
 	if metadata, ok := x["usageMetadata"].(map[string]any); ok {
 		if v, ok := metadata["promptTokenCount"].(float64); ok {
 			in = int64(v)
@@ -487,6 +531,22 @@ func usageFromBody(b []byte) (in, out, read, write int64) {
 		}
 	}
 	return
+}
+
+func responseBodyForInspection(header http.Header, body []byte) []byte {
+	if !strings.EqualFold(strings.TrimSpace(header.Get("Content-Encoding")), "gzip") {
+		return body
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return body
+	}
+	defer reader.Close()
+	decoded, err := io.ReadAll(reader)
+	if err != nil {
+		return body
+	}
+	return decoded
 }
 func cleanError(b []byte) string {
 	s := strings.TrimSpace(string(b))
@@ -544,11 +604,12 @@ func (g *gatewayManager) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		rb, re := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		entry.StatusCode = resp.StatusCode
-		entry.InputTokens, entry.OutputTokens, entry.CacheRead, entry.CacheWrite = usageFromBody(rb)
+		inspectBody := responseBodyForInspection(resp.Header, rb)
+		entry.InputTokens, entry.OutputTokens, entry.CacheRead, entry.CacheWrite = usageFromBody(inspectBody)
 		if re != nil {
 			entry.ErrorBody = re.Error()
 		} else if resp.StatusCode >= 400 {
-			entry.ErrorBody = cleanError(rb)
+			entry.ErrorBody = cleanError(inspectBody)
 		}
 		requestLogs.add(entry)
 		lastStatus, lastHeader, lastBody = resp.StatusCode, resp.Header, rb

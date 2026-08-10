@@ -1,12 +1,32 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestEmptyManagementListsAreArrays(t *testing.T) {
+	logs := requestLogStore{}
+	logResponse := httptest.NewRecorder()
+	logs.logsHandler(logResponse, httptest.NewRequest(http.MethodGet, "/api/logs", nil))
+	var logItems []RequestLog
+	if err := json.Unmarshal(logResponse.Body.Bytes(), &logItems); err != nil || string(logResponse.Body.Bytes()) == "null\n" {
+		t.Fatalf("empty logs must be a JSON array: %q, %v", logResponse.Body.String(), err)
+	}
+	tokens := tokenManager{}
+	tokenResponse := httptest.NewRecorder()
+	tokens.tokensHandler(tokenResponse, httptest.NewRequest(http.MethodGet, "/api/tokens", nil))
+	var tokenItems []AccessToken
+	if err := json.Unmarshal(tokenResponse.Body.Bytes(), &tokenItems); err != nil || string(tokenResponse.Body.Bytes()) == "null\n" {
+		t.Fatalf("empty tokens must be a JSON array: %q, %v", tokenResponse.Body.String(), err)
+	}
+}
 
 func TestGatewayTokenAndTransparentForwarding(t *testing.T) {
 	var gotPath, gotQuery, gotBody, gotAuth, gotCustom string
@@ -115,5 +135,39 @@ func TestUsageFromAnthropicAndGemini(t *testing.T) {
 	in, out, read, write = usageFromBody([]byte(`{"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":22,"cachedContentTokenCount":5}}`))
 	if in != 11 || out != 22 || read != 5 || write != 0 {
 		t.Fatalf("unexpected Gemini usage: %d %d %d %d", in, out, read, write)
+	}
+}
+
+func TestSOCKS5ProxyConfiguration(t *testing.T) {
+	raw := "socks5://user:password@127.0.0.1:1080"
+	if err := validateProxy(raw); err != nil {
+		t.Fatalf("SOCKS5 proxy rejected: %v", err)
+	}
+	transport, err := transportFor(raw)
+	if err != nil {
+		t.Fatalf("SOCKS5 transport failed: %v", err)
+	}
+	if transport.Proxy != nil || transport.DialContext == nil {
+		t.Fatal("SOCKS5 dialer was not installed")
+	}
+	if err := validateProxy("socks4://127.0.0.1:1080"); err == nil {
+		t.Fatal("unsupported proxy scheme accepted")
+	}
+}
+
+func TestUsageFromSSEAndGzip(t *testing.T) {
+	sse := []byte("data: {\"choices\":[]}\n\ndata: {\"usage\":{\"prompt_tokens\":99,\"completion_tokens\":123,\"prompt_tokens_details\":{\"cached_tokens\":8}}}\n\ndata: [DONE]\n")
+	in, out, read, write := usageFromBody(sse)
+	if in != 99 || out != 123 || read != 8 || write != 0 {
+		t.Fatalf("unexpected SSE usage: %d %d %d %d", in, out, read, write)
+	}
+	var compressed bytes.Buffer
+	zw := gzip.NewWriter(&compressed)
+	_, _ = zw.Write([]byte(`{"usage":{"prompt_tokens":11,"completion_tokens":22}}`))
+	_ = zw.Close()
+	header := http.Header{"Content-Encoding": {"gzip"}}
+	in, out, _, _ = usageFromBody(responseBodyForInspection(header, compressed.Bytes()))
+	if in != 11 || out != 22 {
+		t.Fatalf("unexpected gzip usage: %d %d", in, out)
 	}
 }

@@ -1,6 +1,6 @@
 # OpenCode Pool Gateway
 
-当前版本：`0.4.1`
+当前版本：`0.4.2`
 
 ## API 转发网关
 
@@ -36,7 +36,9 @@ Go 模型协议对应关系：
 | OpenAI-compatible Chat Completions | Grok、GLM、Kimi、DeepSeek、MiMo、Hy3 等 | `/zen/go/v1/chat/completions` |
 | Models | Go 完整模型目录 | `/zen/go/v1/models` |
 
-设置页可切换轮询负载均衡与优先级故障转移。最大尝试次数为 `0` 时，每次请求最多尝试所有可用凭证一次。代理支持 `http://` 与 `https://`，账号独立代理优先于全局代理。
+设置页可切换轮询负载均衡与优先级故障转移。最大尝试次数为 `0` 时，每次请求最多尝试所有可用凭证一次。代理支持 `http://`、`https://` 与带用户名密码认证的 `socks5://`，账号独立代理优先于全局代理。
+
+SOCKS5 示例：`socks5://username:password@127.0.0.1:1080`。用户名或密码包含特殊字符时需要进行 URL 编码。
 
 ### 客户端接入
 
@@ -84,12 +86,13 @@ OpenCode Pool Gateway 是一个使用 Go 标准库构建的 OpenCode Go / Zen �
 - 支持全局代理与凭证独立代理，独立代理优先。
 - 本站访问令牌仅保存摘要，第三方令牌不会透传给 OpenCode。
 - 请求日志记录模型、凭证、Token、缓存、耗时和脱敏错误报文。
+- 请求日志支持普通 JSON、gzip 和 SSE 流式响应的用量解析，耗时自动显示为毫秒、秒或分秒。
 
 ## 快速开始
 
 ### Windows
 
-下载 `opencode-pool-gateway-0.4.1-windows-amd64.exe`，双击运行，然后访问：
+下载 `opencode-pool-gateway-0.4.2-windows-amd64.exe`，双击运行，然后访问：
 
 ```text
 http://localhost:8787
@@ -109,11 +112,11 @@ H  显示帮助
 ### Linux
 
 ```bash
-chmod +x opencode-pool-gateway-0.4.1-linux-amd64
-./opencode-pool-gateway-0.4.1-linux-amd64
+chmod +x opencode-pool-gateway-0.4.2-linux-amd64
+./opencode-pool-gateway-0.4.2-linux-amd64
 ```
 
-ARM64 Ubuntu 使用 `opencode-pool-gateway-0.4.1-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+ARM64 Ubuntu 使用 `opencode-pool-gateway-0.4.2-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
 
 ## 登录安全
 
@@ -191,7 +194,7 @@ chmod +x scripts/build.sh
 版本号由根目录 `VERSION` 管理，并通过构建参数写入程序：
 
 ```bash
-./opencode-pool-gateway-0.4.1-linux-amd64 --version
+./opencode-pool-gateway-0.4.2-linux-amd64 --version
 ```
 
 ## 接口
