@@ -22,7 +22,8 @@ foreach ($target in $targets) {
     $env:CGO_ENABLED = "0"
     $env:GOOS = $target.GOOS
     $env:GOARCH = $target.GOARCH
-    go build -trimpath -ldflags $ldflags -o (Join-Path $dist $target.Name) $root
+	go build -trimpath -ldflags $ldflags -o (Join-Path $dist $target.Name) $root
+	if ($LASTEXITCODE -ne 0) { throw "go build failed for $($target.GOOS)/$($target.GOARCH)" }
 }
 
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue

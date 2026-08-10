@@ -188,6 +188,126 @@ func TestParseZenBalanceMissing(t *testing.T) {
 	}
 }
 
+func TestParseZenBillingEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		text    string
+		enabled bool
+	}{
+		{`{"useBalance":true}`, true},
+		{`useBalance:!0`, true},
+		{`{"useBalance":false}`, false},
+		{`useBalance:!1`, false},
+	} {
+		got, found := parseZenBillingEnabled(tc.text)
+		if !found || got != tc.enabled {
+			t.Fatalf("unexpected billing state for %q: %v %v", tc.text, got, found)
+		}
+	}
+	if _, found := parseZenBillingEnabled(`{"balance":0}`); found {
+		t.Fatal("missing useBalance should remain unknown")
+	}
+}
+
+func TestFreeAccountIsHealthy(t *testing.T) {
+	a := Account{ZenAvailable: true, ZenBillingEnabled: false, ZenBalance: 0}
+	classifyAccount(&a, 0)
+	if a.Type != "free" || a.Status != "healthy" {
+		t.Fatalf("free account was misclassified: %+v", a)
+	}
+	a = Account{ZenAvailable: true, ZenBillingEnabled: true, ZenBalance: 0}
+	classifyAccount(&a, 0)
+	if a.Type != "zen" || a.Status != "critical" {
+		t.Fatalf("enabled zero-balance Zen account was misclassified: %+v", a)
+	}
+}
+
+func TestAPIKeyProbeExtractsWorkspaceFromCreditsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/zen/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer sk-test" {
+			t.Fatalf("unexpected probe request: %s %q", r.URL.Path, r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusPaymentRequired)
+		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"CreditsError","message":"没有付款方式。请在此处添加付款方式：https://opencode.ai/workspace/wrk_probe123/billing"}}`))
+	}))
+	defer server.Close()
+	oldBase := apiKeyProbeBase
+	apiKeyProbeBase = server.URL
+	defer func() { apiKeyProbeBase = oldBase }()
+	result, err := probeAPIKey("sk-test", "zen")
+	if err != nil || result.Enabled || result.WorkspaceID != "wrk_probe123" || result.Service != "zen" {
+		t.Fatalf("unexpected probe result: %+v, %v", result, err)
+	}
+}
+
+func TestAPIKeyProbeDetectsEnabledService(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"id":"response-test"}`)) }))
+	defer server.Close()
+	oldBase := apiKeyProbeBase
+	apiKeyProbeBase = server.URL
+	defer func() { apiKeyProbeBase = oldBase }()
+	result, err := probeAPIKey("sk-test", "go")
+	if err != nil || !result.Enabled || result.Service != "go" {
+		t.Fatalf("unexpected probe result: %+v, %v", result, err)
+	}
+}
+
+func TestAPIKeyEntitlementsProbeBothServices(t *testing.T) {
+	requests := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests[r.URL.Path]++
+		if r.URL.Path == "/zen/v1/chat/completions" {
+			w.WriteHeader(http.StatusPaymentRequired)
+			_, _ = w.Write([]byte(`{"error":{"type":"CreditsError","message":"https://opencode.ai/workspace/wrk_both123/billing"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"ok"}`))
+	}))
+	defer server.Close()
+	oldBase := apiKeyProbeBase
+	apiKeyProbeBase = server.URL
+	defer func() { apiKeyProbeBase = oldBase }()
+	result, err := probeAPIKeyEntitlements("sk-test")
+	if err != nil || result.WorkspaceID != "wrk_both123" || !result.GoEnabled || result.ZenEnabled {
+		t.Fatalf("unexpected entitlement result: %+v, %v", result, err)
+	}
+	if requests["/zen/v1/chat/completions"] != 1 || requests["/zen/go/v1/chat/completions"] != 1 {
+		t.Fatalf("both services were not probed: %+v", requests)
+	}
+}
+
+func TestAPIKeyEntitlementsAllowsInconclusivePaidProbes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"error","message":"Internal server error"}}`))
+	}))
+	defer server.Close()
+	oldBase := apiKeyProbeBase
+	apiKeyProbeBase = server.URL
+	defer func() { apiKeyProbeBase = oldBase }()
+	result, err := probeAPIKeyEntitlements("sk-valid")
+	if err != nil || result.GoEnabled || result.ZenEnabled || result.WorkspaceID != "" {
+		t.Fatalf("valid key with inconclusive probes should be saved: %+v, %v", result, err)
+	}
+}
+
+func TestAPIKeyEntitlementsDoesNotRequestModelCatalog(t *testing.T) {
+	paths := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	oldBase := apiKeyProbeBase
+	apiKeyProbeBase = server.URL
+	defer func() { apiKeyProbeBase = oldBase }()
+	_, _ = probeAPIKeyEntitlements("sk-test")
+	for _, path := range paths {
+		if strings.HasSuffix(path, "/models") {
+			t.Fatalf("model catalog must not be probed: %s", path)
+		}
+	}
+}
+
 func TestParseDiscoveredEmail(t *testing.T) {
 	for _, body := range [][]byte{
 		[]byte(`"owner@example.com"`),

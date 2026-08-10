@@ -54,11 +54,40 @@ type UsageWindow struct {
 }
 
 type ModelInfo struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Provider        string `json:"provider,omitempty"`
-	Deprecated      bool   `json:"deprecated,omitempty"`
-	DeprecationDate string `json:"deprecationDate,omitempty"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Provider          string `json:"provider,omitempty"`
+	Deprecated        bool   `json:"deprecated,omitempty"`
+	DeprecationDate   string `json:"deprecationDate,omitempty"`
+	Available         bool   `json:"available"`
+	UnavailableReason string `json:"unavailableReason,omitempty"`
+}
+
+var zenFreeModels = map[string]bool{
+	"big-pickle":             true,
+	"deepseek-v4-flash-free": true,
+	"mimo-v2.5-free":         true,
+	"laguna-s-2.1-free":      true,
+	"ling-3.0-tiny-free":     true,
+	"longcat-2.0-free":       true,
+	"north-mini-code-free":   true,
+	"nemotron-3-ultra-free":  true,
+}
+
+func normalizeModelID(id string) string {
+	id = strings.ToLower(strings.TrimSpace(id))
+	if slash := strings.LastIndex(id, "/"); slash >= 0 {
+		id = id[slash+1:]
+	}
+	return id
+}
+
+func isZenFreeModel(id string) bool { return zenFreeModels[normalizeModelID(id)] }
+
+func annotateModelAvailability(models []ModelInfo, available func(string) (bool, string)) {
+	for i := range models {
+		models[i].Available, models[i].UnavailableReason = available(models[i].ID)
+	}
 }
 
 var zenDeprecationDates = map[string]string{
@@ -90,53 +119,59 @@ var zenDeprecationDates = map[string]string{
 }
 
 type Account struct {
-	ID            string       `json:"id"`
-	Name          string       `json:"name"`
-	Type          string       `json:"type"`
-	WorkspaceID   string       `json:"workspaceId"`
-	APIKey        string       `json:"apiKey"`
-	AuthCookie    string       `json:"authCookie"`
-	Status        string       `json:"status"`
-	Error         string       `json:"error,omitempty"`
-	ModelCount    int          `json:"modelCount"`
-	GoModelCount  int          `json:"goModelCount"`
-	ZenModelCount int          `json:"zenModelCount"`
-	Rolling       *UsageWindow `json:"rolling,omitempty"`
-	Weekly        *UsageWindow `json:"weekly,omitempty"`
-	Monthly       *UsageWindow `json:"monthly,omitempty"`
-	ZenBalance    float64      `json:"zenBalance,omitempty"`
-	GoAvailable   bool         `json:"goAvailable"`
-	ZenAvailable  bool         `json:"zenAvailable"`
-	GoError       string       `json:"goError,omitempty"`
-	ZenError      string       `json:"zenError,omitempty"`
-	LastChecked   time.Time    `json:"lastChecked,omitempty"`
-	Priority      int          `json:"priority"`
-	ProxyURL      string       `json:"proxyUrl,omitempty"`
+	ID                string       `json:"id"`
+	Name              string       `json:"name"`
+	Type              string       `json:"type"`
+	WorkspaceID       string       `json:"workspaceId"`
+	APIKey            string       `json:"apiKey"`
+	AuthCookie        string       `json:"authCookie"`
+	Status            string       `json:"status"`
+	Error             string       `json:"error,omitempty"`
+	ModelCount        int          `json:"modelCount"`
+	GoModelCount      int          `json:"goModelCount"`
+	ZenModelCount     int          `json:"zenModelCount"`
+	Rolling           *UsageWindow `json:"rolling,omitempty"`
+	Weekly            *UsageWindow `json:"weekly,omitempty"`
+	Monthly           *UsageWindow `json:"monthly,omitempty"`
+	ZenBalance        float64      `json:"zenBalance,omitempty"`
+	GoAvailable       bool         `json:"goAvailable"`
+	ZenAvailable      bool         `json:"zenAvailable"`
+	ZenBillingEnabled bool         `json:"zenBillingEnabled"`
+	GoError           string       `json:"goError,omitempty"`
+	ZenError          string       `json:"zenError,omitempty"`
+	LastChecked       time.Time    `json:"lastChecked,omitempty"`
+	Priority          int          `json:"priority"`
+	ProxyURL          string       `json:"proxyUrl,omitempty"`
+	APIOnly           bool         `json:"apiOnly,omitempty"`
+	ProbeService      string       `json:"probeService,omitempty"`
 }
 
 type PublicAccount struct {
-	ID            string       `json:"id"`
-	Name          string       `json:"name"`
-	Type          string       `json:"type"`
-	WorkspaceID   string       `json:"workspaceId"`
-	Status        string       `json:"status"`
-	Error         string       `json:"error,omitempty"`
-	ModelCount    int          `json:"modelCount"`
-	GoModelCount  int          `json:"goModelCount"`
-	ZenModelCount int          `json:"zenModelCount"`
-	Rolling       *UsageWindow `json:"rolling,omitempty"`
-	Weekly        *UsageWindow `json:"weekly,omitempty"`
-	Monthly       *UsageWindow `json:"monthly,omitempty"`
-	ZenBalance    float64      `json:"zenBalance,omitempty"`
-	GoAvailable   bool         `json:"goAvailable"`
-	ZenAvailable  bool         `json:"zenAvailable"`
-	GoError       string       `json:"goError,omitempty"`
-	ZenError      string       `json:"zenError,omitempty"`
-	LastChecked   time.Time    `json:"lastChecked,omitempty"`
-	HasAPIKey     bool         `json:"hasApiKey"`
-	HasCookie     bool         `json:"hasCookie"`
-	Priority      int          `json:"priority"`
-	ProxyURL      string       `json:"proxyUrl,omitempty"`
+	ID                string       `json:"id"`
+	Name              string       `json:"name"`
+	Type              string       `json:"type"`
+	WorkspaceID       string       `json:"workspaceId"`
+	Status            string       `json:"status"`
+	Error             string       `json:"error,omitempty"`
+	ModelCount        int          `json:"modelCount"`
+	GoModelCount      int          `json:"goModelCount"`
+	ZenModelCount     int          `json:"zenModelCount"`
+	Rolling           *UsageWindow `json:"rolling,omitempty"`
+	Weekly            *UsageWindow `json:"weekly,omitempty"`
+	Monthly           *UsageWindow `json:"monthly,omitempty"`
+	ZenBalance        float64      `json:"zenBalance,omitempty"`
+	GoAvailable       bool         `json:"goAvailable"`
+	ZenAvailable      bool         `json:"zenAvailable"`
+	ZenBillingEnabled bool         `json:"zenBillingEnabled"`
+	GoError           string       `json:"goError,omitempty"`
+	ZenError          string       `json:"zenError,omitempty"`
+	LastChecked       time.Time    `json:"lastChecked,omitempty"`
+	HasAPIKey         bool         `json:"hasApiKey"`
+	HasCookie         bool         `json:"hasCookie"`
+	Priority          int          `json:"priority"`
+	ProxyURL          string       `json:"proxyUrl,omitempty"`
+	APIOnly           bool         `json:"apiOnly,omitempty"`
+	ProbeService      string       `json:"probeService,omitempty"`
 }
 
 type DiscoveredAPIKey struct {
@@ -151,6 +186,19 @@ type AccountDiscovery struct {
 	Email    string             `json:"email,omitempty"`
 	APIKeys  []DiscoveredAPIKey `json:"apiKeys"`
 	Warnings []string           `json:"warnings,omitempty"`
+}
+
+type APIKeyProbeResult struct {
+	WorkspaceID string `json:"workspaceId,omitempty"`
+	Service     string `json:"service"`
+	Enabled     bool   `json:"enabled"`
+	Message     string `json:"message"`
+}
+
+type APIKeyEntitlements struct {
+	WorkspaceID string
+	GoEnabled   bool
+	ZenEnabled  bool
 }
 
 type accountStore struct {
@@ -185,6 +233,7 @@ var accessTokens tokenManager
 var requestLogs requestLogStore
 var client = &http.Client{Timeout: 18 * time.Second}
 var discoveryServerURL = "https://opencode.ai/_server"
+var apiKeyProbeBase = "https://opencode.ai"
 var shutdownOnce sync.Once
 var shutdownSignal = make(chan struct{})
 var version = "dev"
@@ -943,6 +992,69 @@ func maskAPIKey(key string) string {
 	return key[:6] + "••••••" + key[len(key)-4:]
 }
 
+func probeAPIKey(apiKey, service string) (APIKeyProbeResult, error) {
+	service = strings.ToLower(strings.TrimSpace(service))
+	var path, payload string
+	switch service {
+	case "go":
+		path = "/zen/go/v1/chat/completions"
+	case "", "zen":
+		service = "zen"
+		path = "/zen/v1/chat/completions"
+	default:
+		return APIKeyProbeResult{}, errors.New("探测服务必须是 Go 或 Zen")
+	}
+	payload = `{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"."}],"max_tokens":1}`
+	req, _ := http.NewRequest(http.MethodPost, apiKeyProbeBase+path, strings.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+strings.TrimPrefix(strings.TrimSpace(apiKey), "Bearer "))
+	req.Header.Set("Content-Type", "application/json")
+	probeClient := &http.Client{Timeout: 45 * time.Second}
+	resp, err := probeClient.Do(req)
+	if err != nil {
+		return APIKeyProbeResult{}, fmt.Errorf("API Key 探测失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	workspace := ""
+	if match := regexp.MustCompile(`/workspace/(wrk_[A-Za-z0-9_-]+)/billing`).FindSubmatch(body); len(match) == 2 {
+		workspace = string(match[1])
+	}
+	var envelope struct {
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(body, &envelope)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return APIKeyProbeResult{WorkspaceID: workspace, Service: service, Enabled: true, Message: "探测请求成功，已确认服务可用"}, nil
+	}
+	if strings.EqualFold(envelope.Error.Type, "CreditsError") || workspace != "" {
+		return APIKeyProbeResult{WorkspaceID: workspace, Service: service, Enabled: false, Message: envelope.Error.Message}, nil
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return APIKeyProbeResult{}, errors.New("API Key 无效或已失效")
+	}
+	return APIKeyProbeResult{}, fmt.Errorf("API Key 探测返回 HTTP %d: %s", resp.StatusCode, shortBody(body))
+}
+
+func probeAPIKeyEntitlements(apiKey string) (APIKeyEntitlements, error) {
+	zen, zenErr := probeAPIKey(apiKey, "zen")
+	goResult, goErr := probeAPIKey(apiKey, "go")
+	if isInvalidAPIKeyProbeError(zenErr) || isInvalidAPIKeyProbeError(goErr) {
+		return APIKeyEntitlements{}, errors.New("API Key 无效或已失效")
+	}
+	workspace := zen.WorkspaceID
+	if workspace == "" {
+		workspace = goResult.WorkspaceID
+	}
+	return APIKeyEntitlements{WorkspaceID: workspace, GoEnabled: goErr == nil && goResult.Enabled, ZenEnabled: zenErr == nil && zen.Enabled}, nil
+}
+
+func isInvalidAPIKeyProbeError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "API Key 无效或已失效")
+}
+
 func accountsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -951,6 +1063,8 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Name, WorkspaceID, APIKey, AuthCookie, ProxyURL string
 			Priority                                        int
+			APIOnly                                         bool
+			ProbeService                                    string
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
 			writeError(w, 400, "请求数据无效")
@@ -965,24 +1079,28 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if input.WorkspaceID == "" || input.AuthCookie == "" {
+		if input.APIOnly && input.APIKey == "" {
+			writeError(w, 400, "API Key 添加模式必须填写 API Key")
+			return
+		}
+		if !input.APIOnly && (input.WorkspaceID == "" || input.AuthCookie == "") {
 			writeError(w, 400, "Workspace ID 和 auth Cookie 均为必填")
 			return
 		}
-		if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(input.WorkspaceID) {
+		if input.WorkspaceID != "" && !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(input.WorkspaceID) {
 			writeError(w, 400, "Workspace ID 格式无效")
 			return
 		}
 		store.RLock()
 		for _, existing := range store.Accounts {
-			if existing.WorkspaceID == input.WorkspaceID {
+			if input.WorkspaceID != "" && existing.WorkspaceID == input.WorkspaceID {
 				store.RUnlock()
 				writeError(w, 409, "该 Workspace 已在监控中，无需重复添加")
 				return
 			}
 		}
 		store.RUnlock()
-		if input.Name == "" || input.APIKey == "" {
+		if !input.APIOnly && (input.Name == "" || input.APIKey == "") {
 			if discovered, discoverErr := discoverAccount(input.WorkspaceID, input.AuthCookie); discoverErr == nil {
 				if input.Name == "" {
 					input.Name = discovered.Email
@@ -992,10 +1110,45 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		entitlements := APIKeyEntitlements{}
+		if input.APIOnly {
+			var err error
+			entitlements, err = probeAPIKeyEntitlements(input.APIKey)
+			if err != nil {
+				writeError(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			if input.WorkspaceID == "" {
+				input.WorkspaceID = entitlements.WorkspaceID
+			}
+			if input.WorkspaceID != "" {
+				store.RLock()
+				for _, existing := range store.Accounts {
+					if existing.WorkspaceID == input.WorkspaceID {
+						store.RUnlock()
+						writeError(w, http.StatusConflict, "探测到的 Workspace 已在账号池中")
+						return
+					}
+				}
+				store.RUnlock()
+			}
+		}
+		if input.Name == "" && input.APIOnly {
+			if input.WorkspaceID != "" {
+				input.Name = input.WorkspaceID
+			} else {
+				input.Name = "API Key " + maskAPIKey(input.APIKey)
+			}
+		}
 		if input.Name == "" {
 			input.Name = input.WorkspaceID
 		}
-		a := Account{ID: "acc-" + strconv.FormatInt(time.Now().UnixNano(), 36), Name: input.Name, Type: "workspace", WorkspaceID: input.WorkspaceID, APIKey: strings.TrimPrefix(input.APIKey, "Bearer "), AuthCookie: input.AuthCookie, Status: "checking", Priority: input.Priority, ProxyURL: input.ProxyURL}
+		a := Account{ID: "acc-" + strconv.FormatInt(time.Now().UnixNano(), 36), Name: input.Name, Type: "workspace", WorkspaceID: input.WorkspaceID, APIKey: strings.TrimPrefix(input.APIKey, "Bearer "), AuthCookie: input.AuthCookie, Status: "checking", Priority: input.Priority, ProxyURL: input.ProxyURL, APIOnly: input.APIOnly, ProbeService: "all"}
+		if input.APIOnly {
+			a.ZenAvailable = true
+			a.ZenBillingEnabled = entitlements.ZenEnabled
+			a.GoAvailable = entitlements.GoEnabled
+		}
 		refreshAccount(&a)
 		store.Lock()
 		store.Accounts = append(store.Accounts, a)
@@ -1036,6 +1189,18 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 		goModels, goErr := fetchModels(goModelsURL, account.APIKey)
 		zenModels, zenErr := fetchModels(zenModelsURL, account.APIKey)
 		annotateZenDeprecations(zenModels)
+		annotateModelAvailability(goModels, func(string) (bool, string) {
+			if account.GoAvailable {
+				return true, ""
+			}
+			return false, "当前凭证未开通 Go"
+		})
+		annotateModelAvailability(zenModels, func(id string) (bool, string) {
+			if account.ZenBillingEnabled || isZenFreeModel(id) {
+				return true, ""
+			}
+			return false, "Free 账号仅可使用 Zen 免费模型"
+		})
 		if goErr != nil && zenErr != nil {
 			writeError(w, 502, "Go 模型查询失败："+goErr.Error()+"；Zen 模型查询失败："+zenErr.Error())
 			return
@@ -1097,6 +1262,8 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Name, WorkspaceID, APIKey, AuthCookie, ProxyURL string
 			Priority                                        int
+			APIOnly                                         bool
+			ProbeService                                    string
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
 			writeError(w, 400, "请求数据无效")
@@ -1111,18 +1278,18 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if input.WorkspaceID == "" {
+		if !input.APIOnly && input.WorkspaceID == "" {
 			writeError(w, 400, "Workspace ID 为必填")
 			return
 		}
-		if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(input.WorkspaceID) {
+		if input.WorkspaceID != "" && !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(input.WorkspaceID) {
 			writeError(w, 400, "Workspace ID 格式无效")
 			return
 		}
 		store.Lock()
 		index := -1
 		for i := range store.Accounts {
-			if store.Accounts[i].ID != id && store.Accounts[i].WorkspaceID == input.WorkspaceID {
+			if input.WorkspaceID != "" && store.Accounts[i].ID != id && store.Accounts[i].WorkspaceID == input.WorkspaceID {
 				store.Unlock()
 				writeError(w, 409, "该 Workspace 已在监控中")
 				return
@@ -1140,8 +1307,14 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 		if input.Name != "" {
 			a.Name = input.Name
 		}
-		a.WorkspaceID = input.WorkspaceID
+		if input.WorkspaceID != "" {
+			a.WorkspaceID = input.WorkspaceID
+		}
 		a.Priority, a.ProxyURL = input.Priority, input.ProxyURL
+		a.APIOnly = input.APIOnly || a.APIOnly
+		if input.ProbeService != "" {
+			a.ProbeService = input.ProbeService
+		}
 		if input.APIKey != "" {
 			a.APIKey = strings.TrimPrefix(input.APIKey, "Bearer ")
 		}
@@ -1197,6 +1370,11 @@ func refreshAccount(a *Account) {
 		a.ZenModelCount = len(zenModels)
 	}
 	a.ModelCount = a.GoModelCount + a.ZenModelCount
+	if a.APIOnly {
+		a.Error, a.GoError, a.ZenError = "", "", ""
+		classifyAccount(a, 0)
+		return
+	}
 	rolling, weekly, monthly, goErr := fetchDashboardUsage(a.WorkspaceID, a.AuthCookie)
 	a.GoAvailable = goErr == nil
 	if goErr == nil {
@@ -1205,8 +1383,9 @@ func refreshAccount(a *Account) {
 		a.Rolling, a.Weekly, a.Monthly = nil, nil, nil
 		a.GoError = goErr.Error()
 	}
-	balance, zenErr := fetchZenBalance(a.WorkspaceID, a.AuthCookie)
+	balance, zenBillingEnabled, zenErr := fetchZenBalance(a.WorkspaceID, a.AuthCookie)
 	a.ZenAvailable = zenErr == nil
+	a.ZenBillingEnabled = zenErr == nil && zenBillingEnabled
 	if zenErr == nil {
 		a.ZenBalance = balance
 	} else {
@@ -1223,20 +1402,34 @@ func refreshAccount(a *Account) {
 			maxUsage = item.UsagePercent
 		}
 	}
+	classifyAccount(a, maxUsage)
+}
+
+func classifyAccount(a *Account, maxUsage float64) {
+	switch {
+	case a.GoAvailable && a.ZenBillingEnabled:
+		a.Type = "go_zen"
+	case a.GoAvailable:
+		a.Type = "go"
+	case a.ZenBillingEnabled:
+		a.Type = "zen"
+	default:
+		a.Type = "free"
+	}
 	if a.GoAvailable && maxUsage >= 90 {
 		a.Status = "critical"
 	} else if a.GoAvailable && maxUsage >= 80 {
 		a.Status = "warning"
-	} else if !a.GoAvailable && a.ZenAvailable && balance <= 1 {
+	} else if a.ZenBillingEnabled && a.ZenBalance <= 1 {
 		a.Status = "critical"
-	} else if !a.GoAvailable && a.ZenAvailable && balance <= 5 {
+	} else if a.ZenBillingEnabled && a.ZenBalance <= 5 {
 		a.Status = "warning"
 	} else {
 		a.Status = "healthy"
 	}
 }
 
-func fetchZenBalance(workspaceID, authCookie string) (float64, error) {
+func fetchZenBalance(workspaceID, authCookie string) (float64, bool, error) {
 	url := "https://opencode.ai/workspace/" + workspaceID
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
 	cookie := authCookie
@@ -1248,17 +1441,30 @@ func fetchZenBalance(workspaceID, authCookie string) (float64, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36")
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return 0, fmt.Errorf("HTTP %d: %s", resp.StatusCode, shortBody(body))
+		return 0, false, fmt.Errorf("HTTP %d: %s", resp.StatusCode, shortBody(body))
 	}
 	if balance, ok := parseZenBalance(normalizeDashboard(string(body))); ok {
-		return balance, nil
+		normalized := normalizeDashboard(string(body))
+		enabled, found := parseZenBillingEnabled(normalized)
+		if !found {
+			enabled = balance > 0
+		}
+		return balance, enabled, nil
 	}
-	return 0, errors.New("页面中未找到 Current balance，Cookie 可能已过期或官方页面结构已变化")
+	return 0, false, errors.New("页面中未找到 Current balance，Cookie 可能已过期或官方页面结构已变化")
+}
+
+func parseZenBillingEnabled(text string) (bool, bool) {
+	m := regexp.MustCompile(`(?i)["']?useBalance["']?\s*:\s*(true|false|!0|!1)`).FindStringSubmatch(text)
+	if len(m) < 2 {
+		return false, false
+	}
+	return m[1] == "true" || m[1] == "!0", true
 }
 
 func parseZenBalance(text string) (float64, bool) {
@@ -1338,7 +1544,7 @@ func parseModels(raw []json.RawMessage) []ModelInfo {
 			name = id
 		}
 		if id != "" {
-			models = append(models, ModelInfo{ID: id, Name: name, Provider: provider})
+			models = append(models, ModelInfo{ID: id, Name: name, Provider: provider, Available: true})
 		}
 	}
 	return models
@@ -1453,10 +1659,10 @@ func toPublic(a Account) PublicAccount {
 		Status: a.Status, Error: a.Error, ModelCount: a.ModelCount,
 		GoModelCount: a.GoModelCount, ZenModelCount: a.ZenModelCount,
 		Rolling: a.Rolling, Weekly: a.Weekly, Monthly: a.Monthly,
-		ZenBalance: a.ZenBalance, GoAvailable: a.GoAvailable, ZenAvailable: a.ZenAvailable,
+		ZenBalance: a.ZenBalance, GoAvailable: a.GoAvailable, ZenAvailable: a.ZenAvailable, ZenBillingEnabled: a.ZenBillingEnabled,
 		GoError: a.GoError, ZenError: a.ZenError,
 		LastChecked: a.LastChecked, HasAPIKey: a.APIKey != "", HasCookie: a.AuthCookie != "",
-		Priority: a.Priority, ProxyURL: a.ProxyURL,
+		Priority: a.Priority, ProxyURL: a.ProxyURL, APIOnly: a.APIOnly, ProbeService: a.ProbeService,
 	}
 }
 func shortBody(b []byte) string {

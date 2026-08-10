@@ -4,6 +4,30 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-10
+
+### Added
+
+- 账号类型细分为 Free、Go、Zen 和 Go + Zen，并在账号卡片中显示。
+- 凭证模型目录新增“可用/不可用”标记和不可用原因。
+- 添加账号新增“仅 API Key”模式，只需填写 API Key、优先级和独立代理。
+- 仅 API Key 模式使用 `deepseek-v4-flash` 分别请求 `/zen/v1/chat/completions` 与 `/zen/go/v1/chat/completions` 探测权益，并从 `CreditsError` 付款链接提取 Workspace ID。
+
+### Changed
+
+- 模型目录不再用于验证 API Key；模型目录仅用于展示模型清单。
+- API Key-only 凭证明确区分“服务权益探测”与“Workspace 配额读取”，无 Cookie 时不再将无法读取 Go 配额显示为未开通。
+- 账号卡片将类型徽标移至独立元信息区域，长名称和 Workspace ID 使用省略显示，避免与运行状态重叠。
+- API Key-only 表单使用明确的必填提示，不再显示“自动获取”。
+- 模型目录接口返回空集合时统一序列化为 `[]`。
+
+### Fixed
+
+- Free 账号不再因 Zen 余额为零进入告警状态。
+- 网关按账号权益筛选凭证：Free 账号不能请求 Go 模型，Zen 付费模型只使用已开启 Zen 计费的凭证。
+- 没有符合模型权益的凭证时返回结构化 `CreditsError` 和 HTTP 402。
+- PowerShell 构建脚本在 `go build` 失败时会立即终止，不再错误报告构建成功。
+
 ## [0.4.2] - 2026-08-10
 
 ### Added

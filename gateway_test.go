@@ -77,9 +77,44 @@ func TestPriorityCandidatesAndRetryLimit(t *testing.T) {
 	defer func() { store.Accounts = oldAccounts }()
 	store.Accounts = []Account{{ID: "high", APIKey: "1", Priority: 5}, {ID: "zero", APIKey: "2", Priority: 0}, {ID: "mid", APIKey: "3", Priority: 2}}
 	g := gatewayManager{Config: GatewayConfig{Mode: "priority", RetryLimit: 2}}
-	got, _ := g.candidates("/zen/v1/models")
+	got, _ := g.candidates("/zen/v1/models", "")
 	if len(got) != 2 || got[0].ID != "zero" || got[1].ID != "mid" {
 		t.Fatalf("unexpected candidates: %+v", got)
+	}
+}
+
+func TestCredentialModelEntitlements(t *testing.T) {
+	oldAccounts := store.Accounts
+	defer func() { store.Accounts = oldAccounts }()
+	store.Accounts = []Account{
+		{ID: "free", APIKey: "1", Type: "free"},
+		{ID: "go", APIKey: "2", Type: "go", GoAvailable: true},
+		{ID: "zen", APIKey: "3", Type: "zen", ZenAvailable: true, ZenBillingEnabled: true},
+	}
+	goAccounts := eligibleAccounts("/zen/go/v1/chat/completions", "glm-5")
+	if len(goAccounts) != 1 || goAccounts[0].ID != "go" {
+		t.Fatalf("unexpected Go candidates: %+v", goAccounts)
+	}
+	freeAccounts := eligibleAccounts("/zen/v1/chat/completions", "deepseek-v4-flash-free")
+	if len(freeAccounts) != 3 {
+		t.Fatalf("Zen free model should accept all credentials: %+v", freeAccounts)
+	}
+	paidAccounts := eligibleAccounts("/zen/v1/messages", "claude-sonnet-4")
+	if len(paidAccounts) != 1 || paidAccounts[0].ID != "zen" {
+		t.Fatalf("unexpected paid Zen candidates: %+v", paidAccounts)
+	}
+}
+
+func TestModelAvailabilityAnnotation(t *testing.T) {
+	models := []ModelInfo{{ID: "deepseek-v4-flash-free"}, {ID: "claude-sonnet-4"}}
+	annotateModelAvailability(models, func(id string) (bool, string) {
+		if isZenFreeModel(id) {
+			return true, ""
+		}
+		return false, "需要 Zen 计费"
+	})
+	if !models[0].Available || models[1].Available || models[1].UnavailableReason == "" {
+		t.Fatalf("unexpected availability: %+v", models)
 	}
 }
 

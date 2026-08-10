@@ -1,6 +1,6 @@
 # OpenCode Pool Gateway
 
-当前版本：`0.4.2`
+当前版本：`0.5.0`
 
 ## API 转发网关
 
@@ -87,12 +87,23 @@ OpenCode Pool Gateway 是一个使用 Go 标准库构建的 OpenCode Go / Zen �
 - 本站访问令牌仅保存摘要，第三方令牌不会透传给 OpenCode。
 - 请求日志记录模型、凭证、Token、缓存、耗时和脱敏错误报文。
 - 请求日志支持普通 JSON、gzip 和 SSE 流式响应的用量解析，耗时自动显示为毫秒、秒或分秒。
+- 自动区分 Free、Go、Zen 和 Go + Zen 账号类型，并按模型权益筛选转发凭证。
+
+## 模型权限
+
+- Free 账号不能用于 Go 路由。
+- Free 账号可以使用官方定价页标记为免费的 Zen 模型。
+- Zen 非免费模型只会调度已开启 Zen 计费的凭证。
+- Go 路由只会调度已开通 Go 的凭证。
+- “模型”窗口会显示每个模型对当前凭证是否可用，以及不可用原因。
+
+Zen 免费模型清单依据 OpenCode 官方定价页维护。官方可能调整免费期限或模型列表，升级版本时应同步检查。
 
 ## 快速开始
 
 ### Windows
 
-下载 `opencode-pool-gateway-0.4.2-windows-amd64.exe`，双击运行，然后访问：
+下载 `opencode-pool-gateway-0.5.0-windows-amd64.exe`，双击运行，然后访问：
 
 ```text
 http://localhost:8787
@@ -112,11 +123,11 @@ H  显示帮助
 ### Linux
 
 ```bash
-chmod +x opencode-pool-gateway-0.4.2-linux-amd64
-./opencode-pool-gateway-0.4.2-linux-amd64
+chmod +x opencode-pool-gateway-0.5.0-linux-amd64
+./opencode-pool-gateway-0.5.0-linux-amd64
 ```
 
-ARM64 Ubuntu 使用 `opencode-pool-gateway-0.4.2-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+ARM64 Ubuntu 使用 `opencode-pool-gateway-0.5.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
 
 ## 登录安全
 
@@ -131,6 +142,15 @@ HTTPS 部署可设置 `OPG_COOKIE_SECURE=1`，强制浏览器只通过 HTTPS 发
 ## 添加账号
 
 每个 Workspace 只添加一次，程序会同时检测 Go 与 Zen：
+
+添加页面支持两种方式：
+
+- `Workspace + Cookie`：可查询账号邮箱、API Key、Go 额度、Zen 余额和完整账号类型。
+- `仅 API Key`：适合只拿到 API Key 的场景。程序会使用 `deepseek-v4-flash` 分别请求 `/zen/go/v1/chat/completions` 与 `/zen/v1/chat/completions`；若响应返回 `CreditsError`，会从付款方式链接自动提取 Workspace ID，并将其作为默认显示名称。
+
+API Key-only 新增界面只要求填写 API Key、优先级和独立代理。探测请求固定使用 `deepseek-v4-flash` 和 `max_tokens: 1`，可能产生极少量 Token 消耗。公开模型目录不会用于验证 API Key。若上游成功响应没有返回 Workspace ID，凭证仍会保存为 API Key-only，额度信息保持不可查询，且后续刷新不会重复执行权益探测。
+
+仅 API Key 可以确认部分 Go/Zen 请求权益，但无法读取 Workspace 页面中的 Go 5 小时、每周、每月额度窗口或 Zen 余额。卡片会将这种情况标记为“需 Cookie 查询”，不会误判为“未开通”。
 
 | 字段 | 用途 | 是否必填 |
 | --- | --- | --- |
@@ -194,7 +214,7 @@ chmod +x scripts/build.sh
 版本号由根目录 `VERSION` 管理，并通过构建参数写入程序：
 
 ```bash
-./opencode-pool-gateway-0.4.2-linux-amd64 --version
+./opencode-pool-gateway-0.5.0-linux-amd64 --version
 ```
 
 ## 接口

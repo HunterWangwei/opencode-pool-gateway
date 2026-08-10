@@ -371,34 +371,28 @@ func (l *requestLogStore) logsHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 
-func eligibleAccounts(path string) []Account {
+func eligibleAccounts(path, model string) []Account {
 	store.RLock()
 	defer store.RUnlock()
 	out := []Account{}
 	isGo := strings.HasPrefix(path, "/zen/go/")
+	isCatalog := path == "/zen/v1/models" || path == "/zen/go/v1/models"
 	for _, a := range store.Accounts {
 		if a.APIKey == "" {
 			continue
 		}
-		if isGo && a.GoError != "" && !a.GoAvailable {
+		if isGo && !a.GoAvailable {
 			continue
 		}
-		if !isGo && a.ZenError != "" && !a.ZenAvailable {
+		if !isGo && !isCatalog && !isZenFreeModel(model) && !a.ZenBillingEnabled {
 			continue
 		}
 		out = append(out, a)
 	}
-	if len(out) == 0 {
-		for _, a := range store.Accounts {
-			if a.APIKey != "" {
-				out = append(out, a)
-			}
-		}
-	}
 	return out
 }
-func (g *gatewayManager) candidates(path string) ([]Account, int) {
-	a := eligibleAccounts(path)
+func (g *gatewayManager) candidates(path, model string) ([]Account, int) {
+	a := eligibleAccounts(path, model)
 	g.RLock()
 	c := g.Config
 	g.RUnlock()
@@ -563,12 +557,18 @@ func (g *gatewayManager) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "读取请求体失败")
 		return
 	}
-	accounts, _ := g.candidates(r.URL.Path)
+	model := requestModel(r.URL.Path, body)
+	accounts, _ := g.candidates(r.URL.Path, model)
 	if len(accounts) == 0 {
-		writeError(w, 503, "没有可用的 OpenCode API Key 凭证")
+		message := "没有满足当前模型权限的可用凭证"
+		if strings.HasPrefix(r.URL.Path, "/zen/go/") {
+			message = "当前没有已开通 Go 的可用凭证"
+		} else if model != "" && !isZenFreeModel(model) {
+			message = "当前没有已开启 Zen 计费的可用凭证，Free 账号仅可使用 Zen 免费模型"
+		}
+		writeJSON(w, http.StatusPaymentRequired, map[string]any{"type": "error", "error": map[string]string{"type": "CreditsError", "message": message}})
 		return
 	}
-	model := requestModel(r.URL.Path, body)
 	var lastStatus int
 	var lastHeader http.Header
 	var lastBody []byte
