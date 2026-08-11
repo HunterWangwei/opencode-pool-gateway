@@ -270,16 +270,16 @@ func (t *tokenManager) tokenHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 405, "method not allowed")
 	}
 }
-func bearer(r *http.Request) string {
+func accessTokenFromRequest(r *http.Request) string {
 	v := r.Header.Get("Authorization")
 	if len(v) > 7 && strings.EqualFold(v[:7], "Bearer ") {
 		return strings.TrimSpace(v[7:])
 	}
-	return ""
+	return strings.TrimSpace(r.Header.Get("X-Api-Key"))
 }
 func (t *tokenManager) requireToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h := tokenHash(bearer(r))
+		h := tokenHash(accessTokenFromRequest(r))
 		t.Lock()
 		ok := false
 		for i := range t.Tokens {
@@ -581,7 +581,12 @@ func (g *gatewayManager) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		req, _ := http.NewRequestWithContext(r.Context(), r.Method, target, bytes.NewReader(body))
 		copyHeaders(req.Header, r.Header)
 		req.Header.Del("Authorization")
-		req.Header.Set("Authorization", "Bearer "+a.APIKey)
+		req.Header.Del("X-Api-Key")
+		if strings.HasSuffix(r.URL.Path, "/messages") {
+			req.Header.Set("X-Api-Key", a.APIKey)
+		} else {
+			req.Header.Set("Authorization", "Bearer "+a.APIKey)
+		}
 		g.RLock()
 		proxy := g.Config.GlobalProxy
 		g.RUnlock()

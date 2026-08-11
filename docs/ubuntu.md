@@ -9,12 +9,12 @@ AMD64：
 ```bash
 sudo useradd --system --home /opt/opencode-pool-gateway --shell /usr/sbin/nologin opencode-pool-gateway
 sudo mkdir -p /opt/opencode-pool-gateway/data /opt/opencode-pool-gateway/temp
-sudo cp opencode-pool-gateway-0.6.0-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo cp opencode-pool-gateway-0.6.1-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
 sudo chown -R opencode-pool-gateway:opencode-pool-gateway /opt/opencode-pool-gateway
 sudo chmod 750 /opt/opencode-pool-gateway/opencode-pool-gateway /opt/opencode-pool-gateway/data /opt/opencode-pool-gateway/temp
 ```
 
-ARM64 服务器将文件名替换为 `opencode-pool-gateway-0.6.0-linux-arm64`。
+ARM64 服务器将文件名替换为 `opencode-pool-gateway-0.6.1-linux-arm64`。
 
 账号密码登录需要 Python 3 和 `requests`：
 

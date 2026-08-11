@@ -1,10 +1,10 @@
 # OpenCode Pool Gateway
 
-当前版本：`0.6.0`
+当前版本：`0.6.1`
 
 ## API 转发网关
 
-第三方客户端使用“令牌管理”页面生成的本站令牌作为 Bearer Token，请求本机或服务器上的 OpenCode Pool Gateway 地址。OpenCode Pool Gateway 完整保留请求路径、查询参数、请求体和业务请求头，仅将上游鉴权替换为选中凭证的 OpenCode API Key。
+第三方客户端使用“令牌管理”页面生成的本站令牌，请求本机或服务器上的 OpenCode Pool Gateway 地址。本站令牌可放在 `Authorization: Bearer` 或 `x-api-key` 中。OpenCode Pool Gateway 完整保留请求路径、查询参数、请求体和业务请求头，仅将上游鉴权替换为选中凭证的 OpenCode API Key。
 
 支持路由：
 
@@ -44,7 +44,8 @@ SOCKS5 示例：`socks5://username:password@127.0.0.1:1080`。用户名或密码
 
 1. 在“令牌管理”页面创建本站访问令牌。
 2. 将第三方客户端的 Base URL 指向 OpenCode Pool Gateway，例如 `http://127.0.0.1:8787/zen/v1`。
-3. 将本站令牌填写为客户端 API Key。网关验证本站令牌后选择账号池中的 OpenCode API Key 请求上游，第三方令牌不会发送给 OpenCode。
+3. 将本站令牌填写为客户端 API Key。客户端可以发送 `Authorization: Bearer <本站令牌>` 或 `x-api-key: <本站令牌>`。
+4. 网关验证本站令牌后选择账号池中的 OpenCode API Key，并按目标协议自动生成上游鉴权头；第三方令牌不会发送给 OpenCode。
 
 Responses 示例：
 
@@ -59,12 +60,20 @@ Anthropic Messages 示例：
 
 ```bash
 curl http://127.0.0.1:8787/zen/v1/messages \
-  -H "Authorization: Bearer gq_your_gateway_token" \
+  -H "x-api-key: gq_your_gateway_token" \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-sonnet-4","max_tokens":256,"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 Gemini 客户端应保留模型路径和动作后缀，例如 `/zen/v1/models/gemini-3.6-flash:generateContent`。查询参数、请求体及除鉴权外的业务请求头均原样透传。
+
+鉴权转换规则：
+
+| 请求方向 | 路由 | 鉴权头 |
+| --- | --- | --- |
+| 第三方客户端 → 本站 | 全部网关路由 | `Authorization: Bearer <本站令牌>` 或 `x-api-key: <本站令牌>` |
+| 本站 → OpenCode | `/zen/v1/messages`、`/zen/go/v1/messages` | `x-api-key: <OpenCode API Key>` |
+| 本站 → OpenCode | 其他支持路由 | `Authorization: Bearer <OpenCode API Key>` |
 
 OpenCode Pool Gateway 是一个使用 Go 标准库构建的 OpenCode Go / Zen 账号池管理与 API 转发网关。它不依赖 OpenCode CLI，可集中管理多个 Workspace，查询额度与模型，并向第三方客户端提供带鉴权、调度、故障转移和代理支持的兼容接口。
 
@@ -103,7 +112,7 @@ Zen 免费模型清单依据 OpenCode 官方定价页维护。官方可能调整
 
 ### Windows
 
-下载 `opencode-pool-gateway-0.6.0-windows-amd64.exe`，双击运行，然后访问：
+下载 `opencode-pool-gateway-0.6.1-windows-amd64.exe`，双击运行，然后访问：
 
 ```text
 http://localhost:8787
@@ -123,11 +132,11 @@ H  显示帮助
 ### Linux
 
 ```bash
-chmod +x opencode-pool-gateway-0.6.0-linux-amd64
-./opencode-pool-gateway-0.6.0-linux-amd64
+chmod +x opencode-pool-gateway-0.6.1-linux-amd64
+./opencode-pool-gateway-0.6.1-linux-amd64
 ```
 
-ARM64 Ubuntu 使用 `opencode-pool-gateway-0.6.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+ARM64 Ubuntu 使用 `opencode-pool-gateway-0.6.1-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
 
 ## 登录安全
 
@@ -245,7 +254,7 @@ chmod +x scripts/build.sh
 版本号由根目录 `VERSION` 管理，并通过构建参数写入程序：
 
 ```bash
-./opencode-pool-gateway-0.6.0-linux-amd64 --version
+./opencode-pool-gateway-0.6.1-linux-amd64 --version
 ```
 
 ## 接口
@@ -272,7 +281,7 @@ chmod +x scripts/build.sh
 - Ubuntu 部署建议配合防火墙或 VPN，避免无关来源访问登录入口。
 - Cookie 和 API Key 均视为账号凭证；泄漏后应立即撤销或重新登录。
 - OpenCode Pool Gateway 是非官方项目，OpenCode 页面或接口结构变化可能导致采集暂时失效。
-- 第三方客户端应将本站令牌放在 `Authorization: Bearer <token>` 中，切勿直接暴露 OpenCode API Key。
+- 第三方客户端应使用本站令牌，可放在 `Authorization: Bearer <token>` 或 `x-api-key: <token>` 中，切勿直接暴露 OpenCode API Key。
 
 ## 版本管理
 

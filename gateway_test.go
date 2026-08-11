@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -69,6 +70,44 @@ func TestGatewayTokenAndTransparentForwarding(t *testing.T) {
 	}
 	if len(requestLogs.Logs) != 1 || requestLogs.Logs[0].InputTokens != 3 || requestLogs.Logs[0].OutputTokens != 4 {
 		t.Fatalf("usage log missing: %+v", requestLogs.Logs)
+	}
+}
+
+func TestMessagesAcceptsClientXAPIKeyAndUsesUpstreamXAPIKey(t *testing.T) {
+	var gotAuthorization, gotAPIKey string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthorization = r.Header.Get("Authorization")
+		gotAPIKey = r.Header.Get("X-Api-Key")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"content":[]}`))
+	}))
+	defer upstream.Close()
+	oldUpstream := gatewayUpstream
+	oldAccounts, oldConfig := store.Accounts, gateway.Config
+	oldTokenItems, oldTokenPath := accessTokens.Tokens, accessTokens.path
+	oldLogItems, oldLogPath := requestLogs.Logs, requestLogs.path
+	defer func() {
+		gatewayUpstream, store.Accounts, gateway.Config = oldUpstream, oldAccounts, oldConfig
+		accessTokens.Tokens, accessTokens.path = oldTokenItems, oldTokenPath
+		requestLogs.Logs, requestLogs.path = oldLogItems, oldLogPath
+	}()
+	gatewayUpstream = upstream.URL
+	store.Accounts = []Account{{ID: "a1", Name: "first", APIKey: "sk-upstream", GoAvailable: true}}
+	gateway.Config = GatewayConfig{Mode: "round_robin"}
+	plain := "gq_client_secret"
+	accessTokens.Tokens = []AccessToken{{ID: "t1", TokenHash: tokenHash(plain), Enabled: true}}
+	accessTokens.path = filepath.Join(t.TempDir(), "tokens.json")
+	requestLogs.path = filepath.Join(t.TempDir(), "requests.jsonl")
+
+	req := httptest.NewRequest(http.MethodPost, "/zen/go/v1/messages", strings.NewReader(`{"model":"qwen3.5-plus","messages":[]}`))
+	req.Header.Set("X-Api-Key", plain)
+	rec := httptest.NewRecorder()
+	accessTokens.requireToken(http.HandlerFunc(gateway.proxyHandler)).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
+	}
+	if gotAPIKey != "sk-upstream" || gotAuthorization != "" {
+		t.Fatalf("messages auth was not translated: authorization=%q x-api-key=%q", gotAuthorization, gotAPIKey)
 	}
 }
 

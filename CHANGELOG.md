@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-11
+
+### Changed
+
+- 第三方客户端调用本站网关时，访问令牌同时支持 `Authorization: Bearer <token>` 和 `x-api-key: <token>`。
+- 转发 `/zen/v1/messages` 与 `/zen/go/v1/messages` 时，自动使用账号池 OpenCode API Key 设置上游 `x-api-key`。
+- 其他 Chat Completions、Responses、Models 和 Gemini 路由继续使用上游 Bearer 鉴权。
+
+### Fixed
+
+- 修复客户端使用 `x-api-key` 时被本站错误返回“访问令牌无效”的问题。
+- 修复 Messages 路由仅设置 Bearer 导致 OpenCode 返回 `AuthError: Missing API key` 的问题。
+- 转发前同时移除客户端的 `Authorization` 和 `x-api-key`，确保本站访问令牌不会发送给 OpenCode。
+
+### Tests
+
+- 新增 `x-api-key` 入站鉴权与 Messages 上游鉴权转换回归测试。
+
 ## [0.6.0] - 2026-08-11
 
 ### Added
