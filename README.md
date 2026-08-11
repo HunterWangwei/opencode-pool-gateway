@@ -1,6 +1,6 @@
 # OpenCode Pool Gateway
 
-当前版本：`0.5.1`
+当前版本：`0.6.0`
 
 ## API 转发网关
 
@@ -103,7 +103,7 @@ Zen 免费模型清单依据 OpenCode 官方定价页维护。官方可能调整
 
 ### Windows
 
-下载 `opencode-pool-gateway-0.5.1-windows-amd64.exe`，双击运行，然后访问：
+下载 `opencode-pool-gateway-0.6.0-windows-amd64.exe`，双击运行，然后访问：
 
 ```text
 http://localhost:8787
@@ -123,11 +123,11 @@ H  显示帮助
 ### Linux
 
 ```bash
-chmod +x opencode-pool-gateway-0.5.1-linux-amd64
-./opencode-pool-gateway-0.5.1-linux-amd64
+chmod +x opencode-pool-gateway-0.6.0-linux-amd64
+./opencode-pool-gateway-0.6.0-linux-amd64
 ```
 
-ARM64 Ubuntu 使用 `opencode-pool-gateway-0.5.1-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+ARM64 Ubuntu 使用 `opencode-pool-gateway-0.6.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
 
 ## 登录安全
 
@@ -143,10 +143,37 @@ HTTPS 部署可设置 `OPG_COOKIE_SECURE=1`，强制浏览器只通过 HTTPS 发
 
 每个 Workspace 只添加一次，程序会同时检测 Go 与 Zen：
 
-添加页面支持两种方式：
+添加页面支持三种方式：
 
 - `Workspace + Cookie`：可查询账号邮箱、API Key、Go 额度、Zen 余额和完整账号类型。
+- `账号密码登录`：后台执行内置 GitHub OAuth 协议脚本，自动取得 Workspace ID、auth Cookie、账号邮箱和本人 API Key。需要 Python 3 与 `requests`。
 - `仅 API Key`：适合只拿到 API Key 的场景。程序会使用 `deepseek-v4-flash` 分别请求 `/zen/go/v1/chat/completions` 与 `/zen/v1/chat/completions`；若响应返回 `CreditsError`，会从付款方式链接自动提取 Workspace ID，并将其作为默认显示名称。
+
+账号密码登录会按脚本定义的 `账号----密码----邮箱密码` 参数协议运行。程序在可执行文件同级的 `temp/opencode-auth-*` 目录读取脚本生成的 Account、Workspace ID 和 Auth Cookie。每次运行的脚本、标准输出和结果文件会保留，便于排查提取失败；登录密码不会写入账号配置。
+
+安装脚本依赖：
+
+```bash
+python3 -m pip install requests
+```
+
+Windows 也可以使用：
+
+```powershell
+py -3 -m pip install requests
+```
+
+每次协议登录的调试文件保存在：
+
+```text
+temp/opencode-auth-随机字符/
+├── opencode_auth_extractor.py
+├── opencode_账号.json
+├── stdout.log
+└── stderr.log
+```
+
+这些目录不会自动删除，确认不再需要后可手动清理。`temp/` 已被 Git 忽略。
 
 API Key-only 新增界面只要求填写 API Key、优先级和独立代理。探测请求固定使用 `deepseek-v4-flash` 和 `max_tokens: 1`，可能产生极少量 Token 消耗。公开模型目录不会用于验证 API Key。若上游成功响应没有返回 Workspace ID，凭证仍会保存为 API Key-only，额度信息保持不可查询，且后续刷新不会重复执行权益探测。
 
@@ -218,7 +245,7 @@ chmod +x scripts/build.sh
 版本号由根目录 `VERSION` 管理，并通过构建参数写入程序：
 
 ```bash
-./opencode-pool-gateway-0.5.1-linux-amd64 --version
+./opencode-pool-gateway-0.6.0-linux-amd64 --version
 ```
 
 ## 接口
@@ -227,6 +254,7 @@ chmod +x scripts/build.sh
 | --- | --- | --- |
 | `/api/accounts` | GET/POST | 查询或添加账号（名称和 API Key 可自动获取） |
 | `/api/accounts/discover` | POST | 使用 Workspace ID 与 auth Cookie 自动读取邮箱和本人 API Key |
+| `/api/accounts/login-extract` | POST | 运行账号密码登录协议并自动读取 Workspace、Cookie、邮箱和 API Key |
 | `/api/accounts/{id}` | PUT/DELETE | 编辑或删除账号 |
 | `/api/accounts/{id}/refresh` | POST | 刷新单个账号 |
 | `/api/accounts/{id}/models` | GET | 分别查询 Go/Zen 模型 |

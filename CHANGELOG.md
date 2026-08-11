@@ -4,6 +4,26 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-11
+
+### Added
+
+- 添加账号新增“账号密码登录”方式，可通过 GitHub 账号、密码和邮箱密码在后台运行协议脚本。
+- 协议脚本自动提取 Account、Workspace ID 和 auth Cookie，随后复用现有账号发现流程读取邮箱与本人 API Key。
+- 内置用户提供的原始 `opencode_auth_extractor.py`，程序按其 `账号----密码----邮箱密码` 参数协议调用，不修改脚本行为。
+- 自动检测 `python3`、`python` 或 Windows `py -3`，并确认 `requests` 依赖可用。
+
+### Changed
+
+- 协议登录任务固定在程序本体目录的 `temp/opencode-auth-*` 中运行。
+- 每次运行保留脚本副本、结果 JSON、`stdout.log` 和 `stderr.log`，方便人工排查提取过程。
+- 登录成功后若存在多个 API Key，可在保存前自行选择。
+
+### Security
+
+- `data/`、`temp/`、脚本测试结果和 Python 缓存目录均不会提交到 Git。
+- GitHub 密码和邮箱密码只用于当前协议脚本进程，不会写入账号配置。
+
 ## [0.5.1] - 2026-08-10
 
 ### Fixed

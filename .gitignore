@@ -1,9 +1,12 @@
 /data/
 /dist/
+/temp/
 /*.exe
 /*.log
 /.idea/
 /.vscode/
 *.tmp
 *.bak
+opencode/opencode_*.json
+opencode/__pycache__/
 .DS_Store

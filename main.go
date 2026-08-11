@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -31,8 +32,8 @@ import (
 	"time"
 )
 
-//go:embed web/*
-var webFS embed.FS
+//go:embed web/* opencode/opencode_auth_extractor.py
+var embeddedFiles embed.FS
 
 const (
 	listenAddr   = ":8787"
@@ -188,6 +189,13 @@ type AccountDiscovery struct {
 	Warnings []string           `json:"warnings,omitempty"`
 }
 
+type LoginExtraction struct {
+	Account     string `json:"account"`
+	WorkspaceID string `json:"workspace_id"`
+	AuthCookie  string `json:"auth_cookie"`
+	TempDir     string `json:"-"`
+}
+
 type APIKeyProbeResult struct {
 	WorkspaceID string `json:"workspaceId,omitempty"`
 	Service     string `json:"service"`
@@ -245,7 +253,7 @@ func main() {
 		fmt.Printf("OpenCode Pool Gateway %s (%s, %s)\n", version, commit, buildDate)
 		return
 	}
-	webRoot, err := fs.Sub(webFS, "web")
+	webRoot, err := fs.Sub(embeddedFiles, "web")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -276,6 +284,7 @@ func main() {
 	appMux := http.NewServeMux()
 	appMux.HandleFunc("/api/accounts", accountsHandler)
 	appMux.HandleFunc("/api/accounts/discover", accountDiscoverHandler)
+	appMux.HandleFunc("/api/accounts/login-extract", accountLoginExtractHandler)
 	appMux.HandleFunc("/api/accounts/", accountHandler)
 	appMux.HandleFunc("/api/refresh", refreshHandler)
 	appMux.HandleFunc("/api/auth", auth.credentialsHandler)
@@ -376,7 +385,7 @@ func (a *authManager) authenticated(r *http.Request) bool {
 
 func (a *authManager) loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		body, err := webFS.ReadFile("web/login.html")
+		body, err := embeddedFiles.ReadFile("web/login.html")
 		if err != nil {
 			http.Error(w, "login page unavailable", http.StatusInternalServerError)
 			return
@@ -751,6 +760,134 @@ func accountDiscoverHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, discovery)
+}
+
+func accountLoginExtractHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var input struct {
+		Account       string `json:"account"`
+		Password      string `json:"password"`
+		EmailPassword string `json:"emailPassword"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "登录参数无效")
+		return
+	}
+	input.Account = strings.TrimSpace(input.Account)
+	if input.Account == "" || input.Password == "" {
+		writeError(w, http.StatusBadRequest, "账号和密码均为必填")
+		return
+	}
+	extracted, err := runAuthExtractor(input.Account, input.Password, input.EmailPassword)
+	input.Password, input.EmailPassword = "", ""
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if extracted.WorkspaceID == "" || extracted.AuthCookie == "" {
+		writeError(w, http.StatusBadGateway, "登录成功，但未提取到 Workspace ID 或 auth Cookie；脚本文件已保留在: "+extracted.TempDir)
+		return
+	}
+	discovery, discoverErr := discoverAccount(extracted.WorkspaceID, extracted.AuthCookie)
+	if discoverErr != nil {
+		writeError(w, http.StatusBadGateway, "已取得登录会话，但自动读取账号信息失败: "+discoverErr.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"account":     extracted.Account,
+		"workspaceId": extracted.WorkspaceID,
+		"authCookie":  extracted.AuthCookie,
+		"email":       discovery.Email,
+		"apiKeys":     discovery.APIKeys,
+		"warnings":    discovery.Warnings,
+	})
+}
+
+func runAuthExtractor(account, password, emailPassword string) (LoginExtraction, error) {
+	if strings.Contains(account, "----") || strings.Contains(password, "----") || strings.Contains(emailPassword, "----") {
+		return LoginExtraction{}, errors.New("账号或密码不能包含协议分隔符 ----")
+	}
+	python, prefix, err := findPython()
+	if err != nil {
+		return LoginExtraction{}, err
+	}
+	script, err := embeddedFiles.ReadFile("opencode/opencode_auth_extractor.py")
+	if err != nil {
+		return LoginExtraction{}, errors.New("读取内置登录脚本失败")
+	}
+	programDir := filepath.Dir(filepath.Dir(dataPath()))
+	tempRoot := filepath.Join(programDir, "temp")
+	if err := os.MkdirAll(tempRoot, 0700); err != nil {
+		return LoginExtraction{}, errors.New("创建程序临时目录失败")
+	}
+	tempDir, err := os.MkdirTemp(tempRoot, "opencode-auth-")
+	if err != nil {
+		return LoginExtraction{}, errors.New("创建登录脚本临时目录失败")
+	}
+	scriptPath := filepath.Join(tempDir, "opencode_auth_extractor.py")
+	if err := os.WriteFile(scriptPath, script, 0600); err != nil {
+		return LoginExtraction{}, errors.New("准备登录脚本失败")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	credential := account + "----" + password
+	if emailPassword != "" {
+		credential += "----" + emailPassword
+	}
+	args := append(append([]string{}, prefix...), scriptPath, credential)
+	cmd := exec.CommandContext(ctx, python, args...)
+	cmd.Dir = tempDir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	runErr := cmd.Run()
+	_ = os.WriteFile(filepath.Join(tempDir, "stdout.log"), stdout.Bytes(), 0600)
+	_ = os.WriteFile(filepath.Join(tempDir, "stderr.log"), stderr.Bytes(), 0600)
+	if runErr != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return LoginExtraction{}, fmt.Errorf("协议登录超时，请检查网络或邮箱验证码；脚本文件已保留在: %s", tempDir)
+		}
+		message := "协议登录失败"
+		if match := regexp.MustCompile(`(?m)^FATAL:\s*(.+)$`).FindStringSubmatch(stdout.String()); len(match) == 2 {
+			message += ": " + strings.TrimSpace(match[1])
+		}
+		if strings.Contains(stderr.String(), "requests not installed") {
+			message = "Python 缺少 requests 依赖，请执行 pip install requests"
+		}
+		return LoginExtraction{}, fmt.Errorf("%s；脚本文件已保留在: %s", message, tempDir)
+	}
+	files, err := filepath.Glob(filepath.Join(tempDir, "opencode_*.json"))
+	if err != nil || len(files) != 1 {
+		return LoginExtraction{}, fmt.Errorf("登录脚本未生成唯一的账号结果文件；脚本文件已保留在: %s", tempDir)
+	}
+	resultBody, err := os.ReadFile(files[0])
+	if err != nil {
+		return LoginExtraction{}, errors.New("读取登录脚本结果失败")
+	}
+	var result LoginExtraction
+	if err := json.Unmarshal(resultBody, &result); err != nil {
+		return LoginExtraction{}, fmt.Errorf("登录脚本结果格式无效；脚本文件已保留在: %s", tempDir)
+	}
+	result.TempDir = tempDir
+	return result, nil
+}
+
+func findPython() (string, []string, error) {
+	for _, candidate := range []struct {
+		name   string
+		prefix []string
+	}{{"python3", nil}, {"python", nil}, {"py", []string{"-3"}}} {
+		if path, err := exec.LookPath(candidate.name); err == nil {
+			args := append(append([]string{}, candidate.prefix...), "-c", "import requests")
+			if exec.Command(path, args...).Run() == nil {
+				return path, candidate.prefix, nil
+			}
+		}
+	}
+	return "", nil, errors.New("未找到可用的 Python 3 + requests，请先安装 Python 并执行 pip install requests")
 }
 
 func discoverAccount(workspaceID, authCookie string) (AccountDiscovery, error) {
