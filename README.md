@@ -1,6 +1,6 @@
 # OpenCode Pool Gateway
 
-当前版本：`0.6.1`
+当前版本：`0.7.0`
 
 ## API 转发网关
 
@@ -36,9 +36,27 @@ Go 模型协议对应关系：
 | OpenAI-compatible Chat Completions | Grok、GLM、Kimi、DeepSeek、MiMo、Hy3 等 | `/zen/go/v1/chat/completions` |
 | Models | Go 完整模型目录 | `/zen/go/v1/models` |
 
-设置页可切换轮询负载均衡与优先级故障转移。最大尝试次数为 `0` 时，每次请求最多尝试所有可用凭证一次。代理支持 `http://`、`https://` 与带用户名密码认证的 `socks5://`，账号独立代理优先于全局代理。
+设置页可切换轮询负载均衡与优先级故障转移。最大尝试次数为 `0` 时，每次请求最多尝试所有可用凭证一次。代理支持 `http://`、`https://`、`socks5://` 和 `socks5h://`，并支持用户名密码认证。
 
 SOCKS5 示例：`socks5://username:password@127.0.0.1:1080`。用户名或密码包含特殊字符时需要进行 URL 编码。
+
+## 代理池
+
+左侧“代理池”页面支持以表格管理多条代理，显示代理地址、绑定凭证、请求成功次数和请求失败次数。
+
+- 每个凭证根据自身 ID 稳定绑定代理池中的一条代理。
+- 相同凭证不会在每次请求时轮换代理。
+- 调整代理池顺序或增删代理后会重新计算稳定映射。
+- 账号池卡片会显示当前凭证实际绑定的代理。
+- 请求统计来自网关请求日志，成功状态为无本地错误且 HTTP 状态码小于 400。
+
+代理使用优先级：
+
+```text
+凭证独立代理 > 代理池固定代理 > 全局代理
+```
+
+`socks5h://` 会将目标域名交给 SOCKS5 代理解析，适合需要避免本地 DNS 解析的场景。
 
 ### 客户端接入
 
@@ -108,11 +126,13 @@ OpenCode Pool Gateway 是一个使用 Go 标准库构建的 OpenCode Go / Zen �
 
 Zen 免费模型清单依据 OpenCode 官方定价页维护。官方可能调整免费期限或模型列表，升级版本时应同步检查。
 
+当前额外识别为 Free 的模型包括 `hy3-free` 和 `nemotron-3.5-lightning-free`。
+
 ## 快速开始
 
 ### Windows
 
-下载 `opencode-pool-gateway-0.6.1-windows-amd64.exe`，双击运行，然后访问：
+下载 `opencode-pool-gateway-0.7.0-windows-amd64.exe`，双击运行，然后访问：
 
 ```text
 http://localhost:8787
@@ -132,11 +152,11 @@ H  显示帮助
 ### Linux
 
 ```bash
-chmod +x opencode-pool-gateway-0.6.1-linux-amd64
-./opencode-pool-gateway-0.6.1-linux-amd64
+chmod +x opencode-pool-gateway-0.7.0-linux-amd64
+./opencode-pool-gateway-0.7.0-linux-amd64
 ```
 
-ARM64 Ubuntu 使用 `opencode-pool-gateway-0.6.1-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
+ARM64 Ubuntu 使用 `opencode-pool-gateway-0.7.0-linux-arm64`。服务器部署及 systemd 配置见 [docs/ubuntu.md](docs/ubuntu.md)。
 
 ## 登录安全
 
@@ -254,7 +274,7 @@ chmod +x scripts/build.sh
 版本号由根目录 `VERSION` 管理，并通过构建参数写入程序：
 
 ```bash
-./opencode-pool-gateway-0.6.1-linux-amd64 --version
+./opencode-pool-gateway-0.7.0-linux-amd64 --version
 ```
 
 ## 接口

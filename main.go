@@ -65,14 +65,16 @@ type ModelInfo struct {
 }
 
 var zenFreeModels = map[string]bool{
-	"big-pickle":             true,
-	"deepseek-v4-flash-free": true,
-	"mimo-v2.5-free":         true,
-	"laguna-s-2.1-free":      true,
-	"ling-3.0-tiny-free":     true,
-	"longcat-2.0-free":       true,
-	"north-mini-code-free":   true,
-	"nemotron-3-ultra-free":  true,
+	"big-pickle":                  true,
+	"deepseek-v4-flash-free":      true,
+	"mimo-v2.5-free":              true,
+	"laguna-s-2.1-free":           true,
+	"ling-3.0-tiny-free":          true,
+	"longcat-2.0-free":            true,
+	"north-mini-code-free":        true,
+	"nemotron-3-ultra-free":       true,
+	"hy3-free":                    true,
+	"nemotron-3.5-lightning-free": true,
 }
 
 func normalizeModelID(id string) string {
@@ -171,6 +173,7 @@ type PublicAccount struct {
 	HasCookie         bool         `json:"hasCookie"`
 	Priority          int          `json:"priority"`
 	ProxyURL          string       `json:"proxyUrl,omitempty"`
+	AssignedProxy     string       `json:"assignedProxy,omitempty"`
 	APIOnly           bool         `json:"apiOnly,omitempty"`
 	ProbeService      string       `json:"probeService,omitempty"`
 }
@@ -1786,6 +1789,7 @@ func toPublic(a Account) PublicAccount {
 		GoError: a.GoError, ZenError: a.ZenError,
 		LastChecked: a.LastChecked, HasAPIKey: a.APIKey != "", HasCookie: a.AuthCookie != "",
 		Priority: a.Priority, ProxyURL: a.ProxyURL, APIOnly: a.APIOnly, ProbeService: a.ProbeService,
+		AssignedProxy: gateway.proxyForCredential(a),
 	}
 }
 func shortBody(b []byte) string {

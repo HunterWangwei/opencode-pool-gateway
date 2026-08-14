@@ -217,6 +217,9 @@ func TestSOCKS5ProxyConfiguration(t *testing.T) {
 	if err := validateProxy(raw); err != nil {
 		t.Fatalf("SOCKS5 proxy rejected: %v", err)
 	}
+	if err := validateProxy("socks5h://user:password@127.0.0.1:1080"); err != nil {
+		t.Fatalf("SOCKS5H proxy rejected: %v", err)
+	}
 	transport, err := transportFor(raw)
 	if err != nil {
 		t.Fatalf("SOCKS5 transport failed: %v", err)
@@ -226,6 +229,18 @@ func TestSOCKS5ProxyConfiguration(t *testing.T) {
 	}
 	if err := validateProxy("socks4://127.0.0.1:1080"); err == nil {
 		t.Fatal("unsupported proxy scheme accepted")
+	}
+}
+
+func TestProxyPoolStableCredentialAssignment(t *testing.T) {
+	g := gatewayManager{Config: GatewayConfig{GlobalProxy: "http://global:8080", ProxyPool: []string{"socks5h://one:1080", "socks5h://two:1080"}}}
+	a := Account{ID: "credential-a"}
+	first, second := g.proxyForCredential(a), g.proxyForCredential(a)
+	if first == "" || first != second || (first != g.Config.ProxyPool[0] && first != g.Config.ProxyPool[1]) {
+		t.Fatalf("proxy pool assignment is not stable: %q %q", first, second)
+	}
+	if got := g.proxyForCredential(Account{ID: "credential-own", ProxyURL: "http://own:8080"}); got != "http://own:8080" {
+		t.Fatalf("credential proxy should take precedence: %q", got)
 	}
 }
 

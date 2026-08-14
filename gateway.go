@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -39,9 +40,10 @@ var gatewayRoutes = []string{
 var gatewayUpstream = "https://opencode.ai"
 
 type GatewayConfig struct {
-	Mode        string `json:"mode"`
-	RetryLimit  int    `json:"retryLimit"`
-	GlobalProxy string `json:"globalProxy"`
+	Mode        string   `json:"mode"`
+	RetryLimit  int      `json:"retryLimit"`
+	GlobalProxy string   `json:"globalProxy"`
+	ProxyPool   []string `json:"proxyPool,omitempty"`
 }
 type gatewayManager struct {
 	sync.RWMutex
@@ -71,6 +73,7 @@ type RequestLog struct {
 	Model          string    `json:"model,omitempty"`
 	CredentialID   string    `json:"credentialId,omitempty"`
 	CredentialName string    `json:"credentialName,omitempty"`
+	ProxyURL       string    `json:"proxyUrl,omitempty"`
 	Attempt        int       `json:"attempt"`
 	StatusCode     int       `json:"statusCode"`
 	InputTokens    int64     `json:"inputTokens,omitempty"`
@@ -126,14 +129,25 @@ func validateGateway(c *GatewayConfig) error {
 		return errors.New("重试次数不能小于 0")
 	}
 	if c.GlobalProxy != "" {
-		return validateProxy(c.GlobalProxy)
+		if err := validateProxy(c.GlobalProxy); err != nil {
+			return err
+		}
+	}
+	for i := range c.ProxyPool {
+		c.ProxyPool[i] = strings.TrimSpace(c.ProxyPool[i])
+		if c.ProxyPool[i] == "" {
+			continue
+		}
+		if err := validateProxy(c.ProxyPool[i]); err != nil {
+			return fmt.Errorf("代理池第 %d 条无效: %w", i+1, err)
+		}
 	}
 	return nil
 }
 func validateProxy(raw string) error {
 	u, e := url.Parse(raw)
-	if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5") {
-		return errors.New("代理地址仅支持 http://、https:// 或 socks5://")
+	if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5" && u.Scheme != "socks5h") {
+		return errors.New("代理地址仅支持 http://、https://、socks5:// 或 socks5h://")
 	}
 	return nil
 }
@@ -143,7 +157,35 @@ func (g *gatewayManager) settingsHandler(w http.ResponseWriter, r *http.Request)
 		g.RLock()
 		c := g.Config
 		g.RUnlock()
-		writeJSON(w, 200, c)
+		stats := map[string]map[string]int{}
+		bindings := map[string][]string{}
+		for _, proxyURL := range c.ProxyPool {
+			stats[proxyURL] = map[string]int{"success": 0, "failure": 0}
+			bindings[proxyURL] = []string{}
+		}
+		requestLogs.RLock()
+		for _, entry := range requestLogs.Logs {
+			if _, ok := stats[entry.ProxyURL]; !ok || entry.ProxyURL == "" {
+				continue
+			}
+			if entry.StatusCode > 0 && entry.StatusCode < 400 && entry.ErrorBody == "" {
+				stats[entry.ProxyURL]["success"]++
+			} else {
+				stats[entry.ProxyURL]["failure"]++
+			}
+		}
+		requestLogs.RUnlock()
+		store.RLock()
+		for _, account := range store.Accounts {
+			if account.ProxyURL != "" {
+				continue
+			}
+			if proxyURL := stablePoolProxy(account.ID, c.ProxyPool); proxyURL != "" {
+				bindings[proxyURL] = append(bindings[proxyURL], account.Name)
+			}
+		}
+		store.RUnlock()
+		writeJSON(w, 200, map[string]any{"mode": c.Mode, "retryLimit": c.RetryLimit, "globalProxy": c.GlobalProxy, "proxyPool": c.ProxyPool, "proxyStats": stats, "proxyBindings": bindings})
 	case http.MethodPut:
 		var c GatewayConfig
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&c) != nil {
@@ -430,7 +472,7 @@ func transportFor(raw string) (*http.Transport, error) {
 	if e != nil {
 		return nil, e
 	}
-	if u.Scheme == "socks5" {
+	if u.Scheme == "socks5" || u.Scheme == "socks5h" {
 		var auth *xproxy.Auth
 		if u.User != nil {
 			password, _ := u.User.Password()
@@ -452,6 +494,39 @@ func transportFor(raw string) (*http.Transport, error) {
 	}
 	tr.Proxy = http.ProxyURL(u)
 	return tr, nil
+}
+
+func (g *gatewayManager) proxyForCredential(a Account) string {
+	if a.ProxyURL != "" {
+		return a.ProxyURL
+	}
+	g.RLock()
+	pool := append([]string(nil), g.Config.ProxyPool...)
+	global := g.Config.GlobalProxy
+	g.RUnlock()
+	if proxyURL := stablePoolProxy(a.ID, pool); proxyURL != "" {
+		return proxyURL
+	}
+	return global
+}
+
+func stablePoolProxy(credentialID string, pool []string) string {
+	valid := append([]string(nil), pool...)
+	filtered := valid[:0]
+	for _, p := range pool {
+		if strings.TrimSpace(p) != "" {
+			filtered = append(filtered, p)
+		}
+	}
+	if len(filtered) > 0 {
+		sum := sha256.Sum256([]byte(credentialID))
+		var n uint64
+		for _, b := range sum[:8] {
+			n = (n << 8) | uint64(b)
+		}
+		return filtered[n%uint64(len(filtered))]
+	}
+	return ""
 }
 func shouldRetry(code int) bool {
 	return code == 401 || code == 403 || code == 408 || code == 429 || code >= 500
@@ -587,18 +662,13 @@ func (g *gatewayManager) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			req.Header.Set("Authorization", "Bearer "+a.APIKey)
 		}
-		g.RLock()
-		proxy := g.Config.GlobalProxy
-		g.RUnlock()
-		if a.ProxyURL != "" {
-			proxy = a.ProxyURL
-		}
+		proxy := g.proxyForCredential(a)
 		tr, te := transportFor(proxy)
 		var resp *http.Response
 		if te == nil {
 			resp, te = (&http.Client{Transport: tr, Timeout: 0}).Do(req)
 		}
-		entry := RequestLog{Time: time.Now(), Route: r.URL.Path, Method: r.Method, Model: model, CredentialID: a.ID, CredentialName: a.Name, Attempt: i + 1, DurationMS: time.Since(started).Milliseconds()}
+		entry := RequestLog{Time: time.Now(), Route: r.URL.Path, Method: r.Method, Model: model, CredentialID: a.ID, CredentialName: a.Name, ProxyURL: proxy, Attempt: i + 1, DurationMS: time.Since(started).Milliseconds()}
 		if te != nil {
 			entry.ErrorBody = te.Error()
 			requestLogs.add(entry)
