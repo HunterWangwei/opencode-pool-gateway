@@ -1,36 +1,29 @@
-# Ubuntu 部署
+﻿# Ubuntu 閮ㄧ讲
 
-以下示例将 OpenCode Pool Gateway 安装在 `/opt/opencode-pool-gateway`，并通过 systemd 运行。
+浠ヤ笅绀轰緥灏?OpenCode Pool Gateway 瀹夎鍦?`/opt/opencode-pool-gateway`锛屽苟閫氳繃 systemd 杩愯銆?
+## 瀹夎
 
-## 安装
-
-AMD64：
-
+AMD64锛?
 ```bash
 sudo useradd --system --home /opt/opencode-pool-gateway --shell /usr/sbin/nologin opencode-pool-gateway
 sudo mkdir -p /opt/opencode-pool-gateway/data /opt/opencode-pool-gateway/temp
-sudo cp opencode-pool-gateway-0.7.0-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo cp opencode-pool-gateway-0.7.1-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
 sudo chown -R opencode-pool-gateway:opencode-pool-gateway /opt/opencode-pool-gateway
 sudo chmod 750 /opt/opencode-pool-gateway/opencode-pool-gateway /opt/opencode-pool-gateway/data /opt/opencode-pool-gateway/temp
 ```
 
-ARM64 服务器将文件名替换为 `opencode-pool-gateway-0.7.0-linux-arm64`。
-
-账号密码登录需要 Python 3 和 `requests`：
-
+ARM64 鏈嶅姟鍣ㄥ皢鏂囦欢鍚嶆浛鎹负 `opencode-pool-gateway-0.7.1-linux-arm64`銆?
+璐﹀彿瀵嗙爜鐧诲綍闇€瑕?Python 3 鍜?`requests`锛?
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-requests
 ```
 
-首次启动会在 `/opt/opencode-pool-gateway/data/auth.json` 创建登录配置，并在 systemd 日志中显示一次随机初始密码。登录后请在网页“设置”中修改凭证。
-
-HTTPS 部署可创建 `/etc/opencode-pool-gateway.env`，内容为 `OPG_COOKIE_SECURE=1`。该选项要求通过 HTTPS 访问。
-
+棣栨鍚姩浼氬湪 `/opt/opencode-pool-gateway/data/auth.json` 鍒涘缓鐧诲綍閰嶇疆锛屽苟鍦?systemd 鏃ュ織涓樉绀轰竴娆￠殢鏈哄垵濮嬪瘑鐮併€傜櫥褰曞悗璇峰湪缃戦〉鈥滆缃€濅腑淇敼鍑瘉銆?
+HTTPS 閮ㄧ讲鍙垱寤?`/etc/opencode-pool-gateway.env`锛屽唴瀹逛负 `OPG_COOKIE_SECURE=1`銆傝閫夐」瑕佹眰閫氳繃 HTTPS 璁块棶銆?
 ## systemd
 
-创建 `/etc/systemd/system/opencode-pool-gateway.service`：
-
+鍒涘缓 `/etc/systemd/system/opencode-pool-gateway.service`锛?
 ```ini
 [Unit]
 Description=OpenCode account pool and API gateway
@@ -55,37 +48,29 @@ ReadWritePaths=/opt/opencode-pool-gateway/data /opt/opencode-pool-gateway/temp
 WantedBy=multi-user.target
 ```
 
-启用服务：
-
+鍚敤鏈嶅姟锛?
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now opencode-pool-gateway
 sudo systemctl status opencode-pool-gateway
 ```
 
-查看日志：
-
+鏌ョ湅鏃ュ織锛?
 ```bash
 journalctl -u opencode-pool-gateway -f
 ```
 
-## 网络安全
+## 缃戠粶瀹夊叏
 
-OpenCode Pool Gateway 当前监听 `8787` 端口，应用自身已提供登录验证。公网部署仍必须使用 HTTPS，优先使用以下方式之一：
+OpenCode Pool Gateway 褰撳墠鐩戝惉 `8787` 绔彛锛屽簲鐢ㄨ嚜韬凡鎻愪緵鐧诲綍楠岃瘉銆傚叕缃戦儴缃蹭粛蹇呴』浣跨敤 HTTPS锛屼紭鍏堜娇鐢ㄤ互涓嬫柟寮忎箣涓€锛?
+- SSH 绔彛杞彂锛歚ssh -L 8787:127.0.0.1:8787 user@server`
+- 浠呭厑璁稿彲淇″唴缃戞垨 VPN 璁块棶銆?- 浣跨敤 Caddy/Nginx 閰嶇疆 HTTPS锛屽苟杞彂 `X-Forwarded-Proto`銆?
+閫氳繃 SSH 杞彂鍚庯紝鍦ㄦ湰鏈鸿闂?`http://localhost:8787`銆?
+## 缃戝叧鎺ュ叆
 
-- SSH 端口转发：`ssh -L 8787:127.0.0.1:8787 user@server`
-- 仅允许可信内网或 VPN 访问。
-- 使用 Caddy/Nginx 配置 HTTPS，并转发 `X-Forwarded-Proto`。
-
-通过 SSH 转发后，在本机访问 `http://localhost:8787`。
-
-## 网关接入
-
-在网页“令牌管理”中创建本站访问令牌，再将第三方客户端的 API 地址指向服务器域名对应的 Go 或 Zen 路由。客户端发送的 Bearer Token 只用于 OpenCode Pool Gateway 鉴权，上游请求会自动换成账号池中选定凭证的 OpenCode API Key。
-
-公网部署必须通过 HTTPS。反向代理需要保留请求方法、路径、查询参数、请求体和流式响应，并允许较长连接时间。
-
-## 升级
+鍦ㄧ綉椤碘€滀护鐗岀鐞嗏€濅腑鍒涘缓鏈珯璁块棶浠ょ墝锛屽啀灏嗙涓夋柟瀹㈡埛绔殑 API 鍦板潃鎸囧悜鏈嶅姟鍣ㄥ煙鍚嶅搴旂殑 Go 鎴?Zen 璺敱銆傚鎴风鍙戦€佺殑 Bearer Token 鍙敤浜?OpenCode Pool Gateway 閴存潈锛屼笂娓歌姹備細鑷姩鎹㈡垚璐﹀彿姹犱腑閫夊畾鍑瘉鐨?OpenCode API Key銆?
+鍏綉閮ㄧ讲蹇呴』閫氳繃 HTTPS銆傚弽鍚戜唬鐞嗛渶瑕佷繚鐣欒姹傛柟娉曘€佽矾寰勩€佹煡璇㈠弬鏁般€佽姹備綋鍜屾祦寮忓搷搴旓紝骞跺厑璁歌緝闀胯繛鎺ユ椂闂淬€?
+## 鍗囩骇
 
 ```bash
 sudo systemctl stop opencode-pool-gateway
@@ -95,10 +80,8 @@ sudo chmod 750 /opt/opencode-pool-gateway/opencode-pool-gateway
 sudo systemctl start opencode-pool-gateway
 ```
 
-全部配置和日志位于 `/opt/opencode-pool-gateway/data/`，替换可执行文件不会删除配置。升级前仍建议备份该目录并妥善保护。
+鍏ㄩ儴閰嶇疆鍜屾棩蹇椾綅浜?`/opt/opencode-pool-gateway/data/`锛屾浛鎹㈠彲鎵ц鏂囦欢涓嶄細鍒犻櫎閰嶇疆銆傚崌绾у墠浠嶅缓璁浠借鐩綍骞跺Ε鍠勪繚鎶ゃ€?
+## 娣诲姞 OpenCode 璐﹀彿
 
-## 添加 OpenCode 账号
-
-Ubuntu 服务器无法直接读取用户电脑浏览器中的 HttpOnly Cookie。请先在桌面浏览器通过 GitHub 或 Google 登录 OpenCode，然后手动复制 Workspace ID 和完整 `auth` Cookie 到 OpenCode Pool Gateway。
-
-提交这两项后，OpenCode Pool Gateway 会自动读取邮箱和当前用户本人拥有的 API Key；如果有多个 Key，需在网页中选择一个。不要在服务器中保存 GitHub 或 Google 密码。
+Ubuntu 鏈嶅姟鍣ㄦ棤娉曠洿鎺ヨ鍙栫敤鎴风數鑴戞祻瑙堝櫒涓殑 HttpOnly Cookie銆傝鍏堝湪妗岄潰娴忚鍣ㄩ€氳繃 GitHub 鎴?Google 鐧诲綍 OpenCode锛岀劧鍚庢墜鍔ㄥ鍒?Workspace ID 鍜屽畬鏁?`auth` Cookie 鍒?OpenCode Pool Gateway銆?
+鎻愪氦杩欎袱椤瑰悗锛孫penCode Pool Gateway 浼氳嚜鍔ㄨ鍙栭偖绠卞拰褰撳墠鐢ㄦ埛鏈汉鎷ユ湁鐨?API Key锛涘鏋滄湁澶氫釜 Key锛岄渶鍦ㄧ綉椤典腑閫夋嫨涓€涓€備笉瑕佸湪鏈嶅姟鍣ㄤ腑淇濆瓨 GitHub 鎴?Google 瀵嗙爜銆?

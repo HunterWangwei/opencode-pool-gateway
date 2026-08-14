@@ -233,7 +233,7 @@ func TestSOCKS5ProxyConfiguration(t *testing.T) {
 }
 
 func TestProxyPoolStableCredentialAssignment(t *testing.T) {
-	g := gatewayManager{Config: GatewayConfig{GlobalProxy: "http://global:8080", ProxyPool: []string{"socks5h://one:1080", "socks5h://two:1080"}}}
+	g := gatewayManager{Config: GatewayConfig{GlobalProxy: "http://global:8080", ProxyPoolEnabled: true, ProxyPool: []string{"socks5h://one:1080", "socks5h://two:1080"}}}
 	a := Account{ID: "credential-a"}
 	first, second := g.proxyForCredential(a), g.proxyForCredential(a)
 	if first == "" || first != second || (first != g.Config.ProxyPool[0] && first != g.Config.ProxyPool[1]) {
@@ -241,6 +241,14 @@ func TestProxyPoolStableCredentialAssignment(t *testing.T) {
 	}
 	if got := g.proxyForCredential(Account{ID: "credential-own", ProxyURL: "http://own:8080"}); got != "http://own:8080" {
 		t.Fatalf("credential proxy should take precedence: %q", got)
+	}
+}
+
+func TestDisabledProxyPoolFallsBackToGlobal(t *testing.T) {
+	g := gatewayManager{Config: GatewayConfig{GlobalProxy: "http://global:8080", ProxyPoolEnabled: false, ProxyPool: []string{"socks5h://one:1080"}}}
+	a := Account{ID: "acct-1"}
+	if got := g.proxyForCredential(a); got != "http://global:8080" {
+		t.Fatalf("disabled proxy pool should use global proxy, got %q", got)
 	}
 }
 

@@ -40,10 +40,11 @@ var gatewayRoutes = []string{
 var gatewayUpstream = "https://opencode.ai"
 
 type GatewayConfig struct {
-	Mode        string   `json:"mode"`
-	RetryLimit  int      `json:"retryLimit"`
-	GlobalProxy string   `json:"globalProxy"`
-	ProxyPool   []string `json:"proxyPool,omitempty"`
+	Mode             string   `json:"mode"`
+	RetryLimit       int      `json:"retryLimit"`
+	GlobalProxy      string   `json:"globalProxy"`
+	ProxyPoolEnabled bool     `json:"proxyPoolEnabled"`
+	ProxyPool        []string `json:"proxyPool,omitempty"`
 }
 type gatewayManager struct {
 	sync.RWMutex
@@ -105,7 +106,7 @@ func atomicJSON(path string, v any) error {
 }
 func (g *gatewayManager) load(path string) error {
 	g.path = path
-	g.Config = GatewayConfig{Mode: "round_robin"}
+	g.Config = GatewayConfig{Mode: "round_robin", ProxyPoolEnabled: true}
 	b, e := os.ReadFile(path)
 	if errors.Is(e, os.ErrNotExist) {
 		return atomicJSON(path, g.Config)
@@ -115,6 +116,10 @@ func (g *gatewayManager) load(path string) error {
 	}
 	if e = json.Unmarshal(b, &g.Config); e != nil {
 		return e
+	}
+	// Configurations created before proxy-pool toggling default to enabled.
+	if !g.Config.ProxyPoolEnabled && !strings.Contains(string(b), `"proxyPoolEnabled"`) {
+		g.Config.ProxyPoolEnabled = true
 	}
 	return validateGateway(&g.Config)
 }
@@ -185,7 +190,7 @@ func (g *gatewayManager) settingsHandler(w http.ResponseWriter, r *http.Request)
 			}
 		}
 		store.RUnlock()
-		writeJSON(w, 200, map[string]any{"mode": c.Mode, "retryLimit": c.RetryLimit, "globalProxy": c.GlobalProxy, "proxyPool": c.ProxyPool, "proxyStats": stats, "proxyBindings": bindings})
+		writeJSON(w, 200, map[string]any{"mode": c.Mode, "retryLimit": c.RetryLimit, "globalProxy": c.GlobalProxy, "proxyPoolEnabled": c.ProxyPoolEnabled, "proxyPool": c.ProxyPool, "proxyStats": stats, "proxyBindings": bindings})
 	case http.MethodPut:
 		var c GatewayConfig
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&c) != nil {
@@ -502,10 +507,13 @@ func (g *gatewayManager) proxyForCredential(a Account) string {
 	}
 	g.RLock()
 	pool := append([]string(nil), g.Config.ProxyPool...)
+	poolEnabled := g.Config.ProxyPoolEnabled
 	global := g.Config.GlobalProxy
 	g.RUnlock()
-	if proxyURL := stablePoolProxy(a.ID, pool); proxyURL != "" {
-		return proxyURL
+	if poolEnabled {
+		if proxyURL := stablePoolProxy(a.ID, pool); proxyURL != "" {
+			return proxyURL
+		}
 	}
 	return global
 }

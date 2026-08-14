@@ -1,197 +1,120 @@
-# Changelog
+﻿# Changelog
 
-本文档记录 OpenCode Pool Gateway 的重要变更，版本号遵循 Semantic Versioning。
-
+鏈枃妗ｈ褰?OpenCode Pool Gateway 鐨勯噸瑕佸彉鏇达紝鐗堟湰鍙烽伒寰?Semantic Versioning銆?
 ## [Unreleased]
+
+## [0.7.1] - 2026-08-14
+
+### Added
+
+- 代理池支持批量粘贴代理地址，每行一条并自动去重。
+- 代理池新增启用/关闭开关，关闭后请求不会使用池内代理。
+
+### Tests
+
+- 新增代理池关闭后回退全局代理的回归测试。
 
 ## [0.7.0] - 2026-08-14
 
 ### Added
 
-- 新增独立代理池页面，支持以表格形式添加、编辑和删除多条代理。
-- 代理表格显示每条代理绑定的凭证、请求成功次数和请求失败次数。
-- 账号池卡片显示当前凭证实际绑定的代理。
-- 代理协议新增 `socks5h://` 支持，域名解析通过 SOCKS5 代理完成。
-- Zen Free 模型清单新增 `hy3-free` 和 `nemotron-3.5-lightning-free`。
-
+- 鏂板鐙珛浠ｇ悊姹犻〉闈紝鏀寔浠ヨ〃鏍煎舰寮忔坊鍔犮€佺紪杈戝拰鍒犻櫎澶氭潯浠ｇ悊銆?- 浠ｇ悊琛ㄦ牸鏄剧ず姣忔潯浠ｇ悊缁戝畾鐨勫嚟璇併€佽姹傛垚鍔熸鏁板拰璇锋眰澶辫触娆℃暟銆?- 璐﹀彿姹犲崱鐗囨樉绀哄綋鍓嶅嚟璇佸疄闄呯粦瀹氱殑浠ｇ悊銆?- 浠ｇ悊鍗忚鏂板 `socks5h://` 鏀寔锛屽煙鍚嶈В鏋愰€氳繃 SOCKS5 浠ｇ悊瀹屾垚銆?- Zen Free 妯″瀷娓呭崟鏂板 `hy3-free` 鍜?`nemotron-3.5-lightning-free`銆?
 ### Changed
 
-- 代理池按凭证 ID 进行稳定映射，同一凭证固定使用同一条代理，不随请求轮换。
-- 代理优先级调整为：凭证独立代理、代理池固定代理、全局代理。
-- 代理池从设置页移至独立导航页面，设置页仅保留全局代理和网关调度配置。
-- Web 侧栏默认版本号同步为 `0.7.0`，加载后由 `/api/version` 返回的构建版本覆盖。
-
+- 浠ｇ悊姹犳寜鍑瘉 ID 杩涜绋冲畾鏄犲皠锛屽悓涓€鍑瘉鍥哄畾浣跨敤鍚屼竴鏉′唬鐞嗭紝涓嶉殢璇锋眰杞崲銆?- 浠ｇ悊浼樺厛绾ц皟鏁翠负锛氬嚟璇佺嫭绔嬩唬鐞嗐€佷唬鐞嗘睜鍥哄畾浠ｇ悊銆佸叏灞€浠ｇ悊銆?- 浠ｇ悊姹犱粠璁剧疆椤电Щ鑷崇嫭绔嬪鑸〉闈紝璁剧疆椤典粎淇濈暀鍏ㄥ眬浠ｇ悊鍜岀綉鍏宠皟搴﹂厤缃€?- Web 渚ф爮榛樿鐗堟湰鍙峰悓姝ヤ负 `0.7.0`锛屽姞杞藉悗鐢?`/api/version` 杩斿洖鐨勬瀯寤虹増鏈鐩栥€?
 ### Tests
 
-- 新增 SOCKS5H 协议校验和稳定代理分配回归测试。
-
+- 鏂板 SOCKS5H 鍗忚鏍￠獙鍜岀ǔ瀹氫唬鐞嗗垎閰嶅洖褰掓祴璇曘€?
 ## [0.6.1] - 2026-08-11
 
 ### Changed
 
-- 第三方客户端调用本站网关时，访问令牌同时支持 `Authorization: Bearer <token>` 和 `x-api-key: <token>`。
-- 转发 `/zen/v1/messages` 与 `/zen/go/v1/messages` 时，自动使用账号池 OpenCode API Key 设置上游 `x-api-key`。
-- 其他 Chat Completions、Responses、Models 和 Gemini 路由继续使用上游 Bearer 鉴权。
-
+- 绗笁鏂瑰鎴风璋冪敤鏈珯缃戝叧鏃讹紝璁块棶浠ょ墝鍚屾椂鏀寔 `Authorization: Bearer <token>` 鍜?`x-api-key: <token>`銆?- 杞彂 `/zen/v1/messages` 涓?`/zen/go/v1/messages` 鏃讹紝鑷姩浣跨敤璐﹀彿姹?OpenCode API Key 璁剧疆涓婃父 `x-api-key`銆?- 鍏朵粬 Chat Completions銆丷esponses銆丮odels 鍜?Gemini 璺敱缁х画浣跨敤涓婃父 Bearer 閴存潈銆?
 ### Fixed
 
-- 修复客户端使用 `x-api-key` 时被本站错误返回“访问令牌无效”的问题。
-- 修复 Messages 路由仅设置 Bearer 导致 OpenCode 返回 `AuthError: Missing API key` 的问题。
-- 转发前同时移除客户端的 `Authorization` 和 `x-api-key`，确保本站访问令牌不会发送给 OpenCode。
-
+- 淇瀹㈡埛绔娇鐢?`x-api-key` 鏃惰鏈珯閿欒杩斿洖鈥滆闂护鐗屾棤鏁堚€濈殑闂銆?- 淇 Messages 璺敱浠呰缃?Bearer 瀵艰嚧 OpenCode 杩斿洖 `AuthError: Missing API key` 鐨勯棶棰樸€?- 杞彂鍓嶅悓鏃剁Щ闄ゅ鎴风鐨?`Authorization` 鍜?`x-api-key`锛岀‘淇濇湰绔欒闂护鐗屼笉浼氬彂閫佺粰 OpenCode銆?
 ### Tests
 
-- 新增 `x-api-key` 入站鉴权与 Messages 上游鉴权转换回归测试。
-
+- 鏂板 `x-api-key` 鍏ョ珯閴存潈涓?Messages 涓婃父閴存潈杞崲鍥炲綊娴嬭瘯銆?
 ## [0.6.0] - 2026-08-11
 
 ### Added
 
-- 添加账号新增“账号密码登录”方式，可通过 GitHub 账号、密码和邮箱密码在后台运行协议脚本。
-- 协议脚本自动提取 Account、Workspace ID 和 auth Cookie，随后复用现有账号发现流程读取邮箱与本人 API Key。
-- 内置用户提供的原始 `opencode_auth_extractor.py`，程序按其 `账号----密码----邮箱密码` 参数协议调用，不修改脚本行为。
-- 自动检测 `python3`、`python` 或 Windows `py -3`，并确认 `requests` 依赖可用。
-
+- 娣诲姞璐﹀彿鏂板鈥滆处鍙峰瘑鐮佺櫥褰曗€濇柟寮忥紝鍙€氳繃 GitHub 璐﹀彿銆佸瘑鐮佸拰閭瀵嗙爜鍦ㄥ悗鍙拌繍琛屽崗璁剼鏈€?- 鍗忚鑴氭湰鑷姩鎻愬彇 Account銆乄orkspace ID 鍜?auth Cookie锛岄殢鍚庡鐢ㄧ幇鏈夎处鍙峰彂鐜版祦绋嬭鍙栭偖绠变笌鏈汉 API Key銆?- 鍐呯疆鐢ㄦ埛鎻愪緵鐨勫師濮?`opencode_auth_extractor.py`锛岀▼搴忔寜鍏?`璐﹀彿----瀵嗙爜----閭瀵嗙爜` 鍙傛暟鍗忚璋冪敤锛屼笉淇敼鑴氭湰琛屼负銆?- 鑷姩妫€娴?`python3`銆乣python` 鎴?Windows `py -3`锛屽苟纭 `requests` 渚濊禆鍙敤銆?
 ### Changed
 
-- 协议登录任务固定在程序本体目录的 `temp/opencode-auth-*` 中运行。
-- 每次运行保留脚本副本、结果 JSON、`stdout.log` 和 `stderr.log`，方便人工排查提取过程。
-- 登录成功后若存在多个 API Key，可在保存前自行选择。
-
+- 鍗忚鐧诲綍浠诲姟鍥哄畾鍦ㄧ▼搴忔湰浣撶洰褰曠殑 `temp/opencode-auth-*` 涓繍琛屻€?- 姣忔杩愯淇濈暀鑴氭湰鍓湰銆佺粨鏋?JSON銆乣stdout.log` 鍜?`stderr.log`锛屾柟渚夸汉宸ユ帓鏌ユ彁鍙栬繃绋嬨€?- 鐧诲綍鎴愬姛鍚庤嫢瀛樺湪澶氫釜 API Key锛屽彲鍦ㄤ繚瀛樺墠鑷閫夋嫨銆?
 ### Security
 
-- `data/`、`temp/`、脚本测试结果和 Python 缓存目录均不会提交到 Git。
-- GitHub 密码和邮箱密码只用于当前协议脚本进程，不会写入账号配置。
-
+- `data/`銆乣temp/`銆佽剼鏈祴璇曠粨鏋滃拰 Python 缂撳瓨鐩綍鍧囦笉浼氭彁浜ゅ埌 Git銆?- GitHub 瀵嗙爜鍜岄偖绠卞瘑鐮佸彧鐢ㄤ簬褰撳墠鍗忚鑴氭湰杩涚▼锛屼笉浼氬啓鍏ヨ处鍙烽厤缃€?
 ## [0.5.1] - 2026-08-10
 
 ### Fixed
 
-- 移除启动时按 Workspace ID 和 Cookie 自动过滤“旧版演示账号”的迁移逻辑，任何用户账号都不会再被程序自动删除或合并。
-- API Key 探测不再将所有 HTTP 403 响应误判为凭证失效；仅 HTTP 401 或明确的认证错误会判定 API Key 无效。
-- `deepseek-v4-flash` 返回模型专属 `RegionError` 时，视为 API Key 和对应服务有效，不再错误阻止账号添加或标记 Go 未开通。
-- Workspace ID 提取支持 `/workspace/<id>/go` 等非 billing 链接。
-
+- 绉婚櫎鍚姩鏃舵寜 Workspace ID 鍜?Cookie 鑷姩杩囨护鈥滄棫鐗堟紨绀鸿处鍙封€濈殑杩佺Щ閫昏緫锛屼换浣曠敤鎴疯处鍙烽兘涓嶄細鍐嶈绋嬪簭鑷姩鍒犻櫎鎴栧悎骞躲€?- API Key 鎺㈡祴涓嶅啀灏嗘墍鏈?HTTP 403 鍝嶅簲璇垽涓哄嚟璇佸け鏁堬紱浠?HTTP 401 鎴栨槑纭殑璁よ瘉閿欒浼氬垽瀹?API Key 鏃犳晥銆?- `deepseek-v4-flash` 杩斿洖妯″瀷涓撳睘 `RegionError` 鏃讹紝瑙嗕负 API Key 鍜屽搴旀湇鍔℃湁鏁堬紝涓嶅啀閿欒闃绘璐﹀彿娣诲姞鎴栨爣璁?Go 鏈紑閫氥€?- Workspace ID 鎻愬彇鏀寔 `/workspace/<id>/go` 绛夐潪 billing 閾炬帴銆?
 ### Tests
 
-- 新增账号配置完整保留、区域限制响应和明确认证错误的回归测试。
-
+- 鏂板璐﹀彿閰嶇疆瀹屾暣淇濈暀銆佸尯鍩熼檺鍒跺搷搴斿拰鏄庣‘璁よ瘉閿欒鐨勫洖褰掓祴璇曘€?
 ## [0.5.0] - 2026-08-10
 
 ### Added
 
-- 账号类型细分为 Free、Go、Zen 和 Go + Zen，并在账号卡片中显示。
-- 凭证模型目录新增“可用/不可用”标记和不可用原因。
-- 添加账号新增“仅 API Key”模式，只需填写 API Key、优先级和独立代理。
-- 仅 API Key 模式使用 `deepseek-v4-flash` 分别请求 `/zen/v1/chat/completions` 与 `/zen/go/v1/chat/completions` 探测权益，并从 `CreditsError` 付款链接提取 Workspace ID。
-
+- 璐﹀彿绫诲瀷缁嗗垎涓?Free銆丟o銆乑en 鍜?Go + Zen锛屽苟鍦ㄨ处鍙峰崱鐗囦腑鏄剧ず銆?- 鍑瘉妯″瀷鐩綍鏂板鈥滃彲鐢?涓嶅彲鐢ㄢ€濇爣璁板拰涓嶅彲鐢ㄥ師鍥犮€?- 娣诲姞璐﹀彿鏂板鈥滀粎 API Key鈥濇ā寮忥紝鍙渶濉啓 API Key銆佷紭鍏堢骇鍜岀嫭绔嬩唬鐞嗐€?- 浠?API Key 妯″紡浣跨敤 `deepseek-v4-flash` 鍒嗗埆璇锋眰 `/zen/v1/chat/completions` 涓?`/zen/go/v1/chat/completions` 鎺㈡祴鏉冪泭锛屽苟浠?`CreditsError` 浠樻閾炬帴鎻愬彇 Workspace ID銆?
 ### Changed
 
-- 模型目录不再用于验证 API Key；模型目录仅用于展示模型清单。
-- API Key-only 凭证明确区分“服务权益探测”与“Workspace 配额读取”，无 Cookie 时不再将无法读取 Go 配额显示为未开通。
-- 账号卡片将类型徽标移至独立元信息区域，长名称和 Workspace ID 使用省略显示，避免与运行状态重叠。
-- API Key-only 表单使用明确的必填提示，不再显示“自动获取”。
-- 模型目录接口返回空集合时统一序列化为 `[]`。
-
+- 妯″瀷鐩綍涓嶅啀鐢ㄤ簬楠岃瘉 API Key锛涙ā鍨嬬洰褰曚粎鐢ㄤ簬灞曠ず妯″瀷娓呭崟銆?- API Key-only 鍑瘉鏄庣‘鍖哄垎鈥滄湇鍔℃潈鐩婃帰娴嬧€濅笌鈥淲orkspace 閰嶉璇诲彇鈥濓紝鏃?Cookie 鏃朵笉鍐嶅皢鏃犳硶璇诲彇 Go 閰嶉鏄剧ず涓烘湭寮€閫氥€?- 璐﹀彿鍗＄墖灏嗙被鍨嬪窘鏍囩Щ鑷崇嫭绔嬪厓淇℃伅鍖哄煙锛岄暱鍚嶇О鍜?Workspace ID 浣跨敤鐪佺暐鏄剧ず锛岄伩鍏嶄笌杩愯鐘舵€侀噸鍙犮€?- API Key-only 琛ㄥ崟浣跨敤鏄庣‘鐨勫繀濉彁绀猴紝涓嶅啀鏄剧ず鈥滆嚜鍔ㄨ幏鍙栤€濄€?- 妯″瀷鐩綍鎺ュ彛杩斿洖绌洪泦鍚堟椂缁熶竴搴忓垪鍖栦负 `[]`銆?
 ### Fixed
 
-- Free 账号不再因 Zen 余额为零进入告警状态。
-- 网关按账号权益筛选凭证：Free 账号不能请求 Go 模型，Zen 付费模型只使用已开启 Zen 计费的凭证。
-- 没有符合模型权益的凭证时返回结构化 `CreditsError` 和 HTTP 402。
-- PowerShell 构建脚本在 `go build` 失败时会立即终止，不再错误报告构建成功。
-
+- Free 璐﹀彿涓嶅啀鍥?Zen 浣欓涓洪浂杩涘叆鍛婅鐘舵€併€?- 缃戝叧鎸夎处鍙锋潈鐩婄瓫閫夊嚟璇侊細Free 璐﹀彿涓嶈兘璇锋眰 Go 妯″瀷锛孼en 浠樿垂妯″瀷鍙娇鐢ㄥ凡寮€鍚?Zen 璁¤垂鐨勫嚟璇併€?- 娌℃湁绗﹀悎妯″瀷鏉冪泭鐨勫嚟璇佹椂杩斿洖缁撴瀯鍖?`CreditsError` 鍜?HTTP 402銆?- PowerShell 鏋勫缓鑴氭湰鍦?`go build` 澶辫触鏃朵細绔嬪嵆缁堟锛屼笉鍐嶉敊璇姤鍛婃瀯寤烘垚鍔熴€?
 ## [0.4.2] - 2026-08-10
 
 ### Added
 
-- 全局代理和单凭证代理新增带用户名密码认证的 SOCKS5 支持。
-
+- 鍏ㄥ眬浠ｇ悊鍜屽崟鍑瘉浠ｇ悊鏂板甯︾敤鎴峰悕瀵嗙爜璁よ瘉鐨?SOCKS5 鏀寔銆?
 ### Changed
 
-- 设置页改为响应式双栏布局，充分利用桌面端可用宽度。
-- 桌面端侧栏固定在视口左侧，服务状态、同步时间和版本号不再随内容滚动。
-- 请求耗时改为毫秒、秒、分秒三级自适应显示。
-
+- 璁剧疆椤垫敼涓哄搷搴斿紡鍙屾爮甯冨眬锛屽厖鍒嗗埄鐢ㄦ闈㈢鍙敤瀹藉害銆?- 妗岄潰绔晶鏍忓浐瀹氬湪瑙嗗彛宸︿晶锛屾湇鍔＄姸鎬併€佸悓姝ユ椂闂村拰鐗堟湰鍙蜂笉鍐嶉殢鍐呭婊氬姩銆?- 璇锋眰鑰楁椂鏀逛负姣銆佺銆佸垎绉掍笁绾ц嚜閫傚簲鏄剧ず銆?
 ### Fixed
 
-- 修复空请求日志或空令牌列表返回 `null` 导致页面读取 `length` 失败的问题。
-- 请求日志新增 gzip 与 SSE 响应解析，可从流式请求中提取 Token 用量。
-- 同时识别 Chat Completions 的 `prompt_tokens_details.cached_tokens` 和 Responses 的 `input_tokens_details.cached_tokens`。
-
+- 淇绌鸿姹傛棩蹇楁垨绌轰护鐗屽垪琛ㄨ繑鍥?`null` 瀵艰嚧椤甸潰璇诲彇 `length` 澶辫触鐨勯棶棰樸€?- 璇锋眰鏃ュ織鏂板 gzip 涓?SSE 鍝嶅簲瑙ｆ瀽锛屽彲浠庢祦寮忚姹備腑鎻愬彇 Token 鐢ㄩ噺銆?- 鍚屾椂璇嗗埆 Chat Completions 鐨?`prompt_tokens_details.cached_tokens` 鍜?Responses 鐨?`input_tokens_details.cached_tokens`銆?
 ### Dependencies
 
-- 新增 `golang.org/x/net/proxy`，用于标准 SOCKS5 与用户名密码认证。
-
+- 鏂板 `golang.org/x/net/proxy`锛岀敤浜庢爣鍑?SOCKS5 涓庣敤鎴峰悕瀵嗙爜璁よ瘉銆?
 ## [0.4.1] - 2026-08-10
 
 ### Added
 
-- Zen 网关新增 Anthropic Messages、OpenAI-compatible Chat Completions 和 Gemini 动态模型路由。
-- Go 网关新增 OpenAI Responses 与 Anthropic Messages 路由。
-- 请求日志新增 Anthropic 与 Gemini 用量字段解析，并可从 Gemini URL 记录模型 ID。
-
+- Zen 缃戝叧鏂板 Anthropic Messages銆丱penAI-compatible Chat Completions 鍜?Gemini 鍔ㄦ€佹ā鍨嬭矾鐢便€?- Go 缃戝叧鏂板 OpenAI Responses 涓?Anthropic Messages 璺敱銆?- 璇锋眰鏃ュ織鏂板 Anthropic 涓?Gemini 鐢ㄩ噺瀛楁瑙ｆ瀽锛屽苟鍙粠 Gemini URL 璁板綍妯″瀷 ID銆?
 ## [0.4.0] - 2026-08-10
 
 ### Added
 
-- 新增 OpenCode API 透明转发，兼容 Go Chat Completions、Go Models、Zen Responses 与 Zen Models 路由。
-- 新增负载均衡轮询和优先级故障转移模式，并支持最大尝试次数配置。
-- 账号凭证新增优先级与独立 HTTP/HTTPS 代理，全局代理可在设置页热更新。
-- 新增本站访问令牌管理，令牌只在创建时显示明文，磁盘仅保存 SHA-256 摘要。
-- 新增请求日志页，记录凭证、模型、Token 用量、缓存读写、耗时和脱敏错误报文。
-
+- 鏂板 OpenCode API 閫忔槑杞彂锛屽吋瀹?Go Chat Completions銆丟o Models銆乑en Responses 涓?Zen Models 璺敱銆?- 鏂板璐熻浇鍧囪　杞鍜屼紭鍏堢骇鏁呴殰杞Щ妯″紡锛屽苟鏀寔鏈€澶у皾璇曟鏁伴厤缃€?- 璐﹀彿鍑瘉鏂板浼樺厛绾т笌鐙珛 HTTP/HTTPS 浠ｇ悊锛屽叏灞€浠ｇ悊鍙湪璁剧疆椤电儹鏇存柊銆?- 鏂板鏈珯璁块棶浠ょ墝绠＄悊锛屼护鐗屽彧鍦ㄥ垱寤烘椂鏄剧ず鏄庢枃锛岀鐩樹粎淇濆瓨 SHA-256 鎽樿銆?- 鏂板璇锋眰鏃ュ織椤碉紝璁板綍鍑瘉銆佹ā鍨嬨€乀oken 鐢ㄩ噺銆佺紦瀛樿鍐欍€佽€楁椂鍜岃劚鏁忛敊璇姤鏂囥€?
 ### Changed
 
-- 项目由 GoQuota / `opencode-go-quota-monitor` 更名为 OpenCode Pool Gateway / `opencode-pool-gateway`，以准确反映账号池、API 网关和故障转移能力。
-- 可执行文件、Go module、网页品牌、部署目录、systemd 服务和环境变量统一使用新名称。
-
+- 椤圭洰鐢?GoQuota / `opencode-go-quota-monitor` 鏇村悕涓?OpenCode Pool Gateway / `opencode-pool-gateway`锛屼互鍑嗙‘鍙嶆槧璐﹀彿姹犮€丄PI 缃戝叧鍜屾晠闅滆浆绉昏兘鍔涖€?- 鍙墽琛屾枃浠躲€丟o module銆佺綉椤靛搧鐗屻€侀儴缃茬洰褰曘€乻ystemd 鏈嶅姟鍜岀幆澧冨彉閲忕粺涓€浣跨敤鏂板悕绉般€?
 ### Security
 
-- 第三方客户端令牌不会转发到 OpenCode，上游只接收所选账号的 API Key。
-- 日志不记录 API Key、Cookie 或完整本站访问令牌。
-
+- 绗笁鏂瑰鎴风浠ょ墝涓嶄細杞彂鍒?OpenCode锛屼笂娓稿彧鎺ユ敹鎵€閫夎处鍙风殑 API Key銆?- 鏃ュ織涓嶈褰?API Key銆丆ookie 鎴栧畬鏁存湰绔欒闂护鐗屻€?
 ## [0.3.0] - 2026-08-10
 
 ### Added
 
-- 添加账号时显示名称和 API Key 改为可选，可通过 Workspace ID 与 auth Cookie 自动读取账号邮箱。
-- 自动读取当前登录用户本人拥有的完整 API Key；存在多个 Key 时可在网页中选择。
-- 支持解析 OpenCode `key.list` 返回的 Seroval 流式响应，正确提取当前用户拥有的完整 API Key。
-
+- 娣诲姞璐﹀彿鏃舵樉绀哄悕绉板拰 API Key 鏀逛负鍙€夛紝鍙€氳繃 Workspace ID 涓?auth Cookie 鑷姩璇诲彇璐﹀彿閭銆?- 鑷姩璇诲彇褰撳墠鐧诲綍鐢ㄦ埛鏈汉鎷ユ湁鐨勫畬鏁?API Key锛涘瓨鍦ㄥ涓?Key 鏃跺彲鍦ㄧ綉椤典腑閫夋嫨銆?- 鏀寔瑙ｆ瀽 OpenCode `key.list` 杩斿洖鐨?Seroval 娴佸紡鍝嶅簲锛屾纭彁鍙栧綋鍓嶇敤鎴锋嫢鏈夌殑瀹屾暣 API Key銆?
 ### Changed
 
-- 登录凭证改为优先读取程序目录下的 `data/auth.json`。
-- 首次启动自动生成随机初始密码，并将密码哈希写入配置文件。
-- 设置页面可修改登录用户名和密码，保存后立即生效并注销旧会话。
-- 管理密码最小长度调整为 8 个字符。
-- 账号卡片与保存提示明确显示 API Key 是否已配置。
-
+- 鐧诲綍鍑瘉鏀逛负浼樺厛璇诲彇绋嬪簭鐩綍涓嬬殑 `data/auth.json`銆?- 棣栨鍚姩鑷姩鐢熸垚闅忔満鍒濆瀵嗙爜锛屽苟灏嗗瘑鐮佸搱甯屽啓鍏ラ厤缃枃浠躲€?- 璁剧疆椤甸潰鍙慨鏀圭櫥褰曠敤鎴峰悕鍜屽瘑鐮侊紝淇濆瓨鍚庣珛鍗崇敓鏁堝苟娉ㄩ攢鏃т細璇濄€?- 绠＄悊瀵嗙爜鏈€灏忛暱搴﹁皟鏁翠负 8 涓瓧绗︺€?- 璐﹀彿鍗＄墖涓庝繚瀛樻彁绀烘槑纭樉绀?API Key 鏄惁宸查厤缃€?
 ### Fixed
 
-- 自动识别失败时保留手动填写兜底，并明确提示 Cookie 失效或 Workspace 不匹配。
-- 修正 SolidStart 服务函数所需的 Seroval JSON 请求格式，避免将接口错误误判为 Cookie 失效。
-- 识别失败后不会再次点击就静默保存未识别账号。
-- OpenCode Pool Gateway 管理会话失效时自动返回登录页，避免将本地 401 错误显示为 OpenCode 账号识别失败。
-
+- 鑷姩璇嗗埆澶辫触鏃朵繚鐣欐墜鍔ㄥ～鍐欏厹搴曪紝骞舵槑纭彁绀?Cookie 澶辨晥鎴?Workspace 涓嶅尮閰嶃€?- 淇 SolidStart 鏈嶅姟鍑芥暟鎵€闇€鐨?Seroval JSON 璇锋眰鏍煎紡锛岄伩鍏嶅皢鎺ュ彛閿欒璇垽涓?Cookie 澶辨晥銆?- 璇嗗埆澶辫触鍚庝笉浼氬啀娆＄偣鍑诲氨闈欓粯淇濆瓨鏈瘑鍒处鍙枫€?- OpenCode Pool Gateway 绠＄悊浼氳瘽澶辨晥鏃惰嚜鍔ㄨ繑鍥炵櫥褰曢〉锛岄伩鍏嶅皢鏈湴 401 閿欒鏄剧ず涓?OpenCode 璐﹀彿璇嗗埆澶辫触銆?
 ## [0.2.0] - 2026-08-10
 
 ### Added
 
-- 服务端登录验证，未认证用户无法访问页面和 API。
-- 24 小时 HttpOnly、SameSite 会话 Cookie。
-- 单 IP 登录失败限流：5 次失败后锁定 5 分钟。
-- `OPG_USERNAME`、`OPG_PASSWORD` 和 `OPG_COOKIE_SECURE` 部署配置。
-- 网页退出登录入口和基础安全响应头。
-
+- 鏈嶅姟绔櫥褰曢獙璇侊紝鏈璇佺敤鎴锋棤娉曡闂〉闈㈠拰 API銆?- 24 灏忔椂 HttpOnly銆丼ameSite 浼氳瘽 Cookie銆?- 鍗?IP 鐧诲綍澶辫触闄愭祦锛? 娆″け璐ュ悗閿佸畾 5 鍒嗛挓銆?- `OPG_USERNAME`銆乣OPG_PASSWORD` 鍜?`OPG_COOKIE_SECURE` 閮ㄧ讲閰嶇疆銆?- 缃戦〉閫€鍑虹櫥褰曞叆鍙ｅ拰鍩虹瀹夊叏鍝嶅簲澶淬€?
 ## [0.1.0] - 2026-08-10
 
 ### Added
 
-- OpenCode Workspace 批量监控和账号卡片视图。
-- Go 订阅额度与 Zen 按量付费余额分别识别。
-- Go、Zen 可用模型目录分别实时查询。
-- Zen 已弃用模型标记及官方弃用日期。
-- 账号添加、编辑、删除、单项刷新和全量刷新。
-- Windows 可见控制台及网页内安全退出入口。
-- 配置随程序存放在 `data/accounts.json`。
-- Windows 与 Linux 跨平台构建脚本。
+- OpenCode Workspace 鎵归噺鐩戞帶鍜岃处鍙峰崱鐗囪鍥俱€?- Go 璁㈤槄棰濆害涓?Zen 鎸夐噺浠樿垂浣欓鍒嗗埆璇嗗埆銆?- Go銆乑en 鍙敤妯″瀷鐩綍鍒嗗埆瀹炴椂鏌ヨ銆?- Zen 宸插純鐢ㄦā鍨嬫爣璁板強瀹樻柟寮冪敤鏃ユ湡銆?- 璐﹀彿娣诲姞銆佺紪杈戙€佸垹闄ゃ€佸崟椤瑰埛鏂板拰鍏ㄩ噺鍒锋柊銆?- Windows 鍙鎺у埗鍙板強缃戦〉鍐呭畨鍏ㄩ€€鍑哄叆鍙ｃ€?- 閰嶇疆闅忕▼搴忓瓨鏀惧湪 `data/accounts.json`銆?- Windows 涓?Linux 璺ㄥ钩鍙版瀯寤鸿剼鏈€?
+
