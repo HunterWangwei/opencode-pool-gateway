@@ -7,12 +7,12 @@ AMD64锛?
 ```bash
 sudo useradd --system --home /opt/opencode-pool-gateway --shell /usr/sbin/nologin opencode-pool-gateway
 sudo mkdir -p /opt/opencode-pool-gateway/data /opt/opencode-pool-gateway/temp
-sudo cp opencode-pool-gateway-0.7.1-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo cp opencode-pool-gateway-0.7.2-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
 sudo chown -R opencode-pool-gateway:opencode-pool-gateway /opt/opencode-pool-gateway
 sudo chmod 750 /opt/opencode-pool-gateway/opencode-pool-gateway /opt/opencode-pool-gateway/data /opt/opencode-pool-gateway/temp
 ```
 
-ARM64 鏈嶅姟鍣ㄥ皢鏂囦欢鍚嶆浛鎹负 `opencode-pool-gateway-0.7.1-linux-arm64`銆?
+ARM64 鏈嶅姟鍣ㄥ皢鏂囦欢鍚嶆浛鎹负 `opencode-pool-gateway-0.7.2-linux-arm64`銆?
 璐﹀彿瀵嗙爜鐧诲綍闇€瑕?Python 3 鍜?`requests`锛?
 ```bash
 sudo apt update

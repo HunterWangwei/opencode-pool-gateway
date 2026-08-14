@@ -307,9 +307,15 @@ func main() {
 	mux.Handle("/", auth.requireAuth(appMux))
 
 	server := &http.Server{Addr: listenAddr, Handler: securityHeaders(mux), ReadHeaderTimeout: 10 * time.Second}
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		handleListenError(err)
+		return
+	}
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			log.Printf("server error: %v", err)
+			requestShutdown()
 		}
 	}()
 	go refreshAll()
@@ -1865,6 +1871,34 @@ func openBrowser(url string) error {
 		command, args = "xdg-open", []string{url}
 	}
 	return exec.Command(command, args...).Start()
+}
+
+func handleListenError(err error) {
+	const localURL = "http://localhost:8787"
+	if gatewayAlreadyRunning(localURL + "/login") {
+		log.Println("OpenCode Pool Gateway 已在运行，正在打开现有管理页面。")
+		if openErr := openBrowser(localURL); openErr != nil {
+			log.Printf("无法自动打开浏览器: %v", openErr)
+		}
+		return
+	}
+	log.Printf("无法启动服务: %v", err)
+	log.Println("端口 8787 已被其他程序占用，请关闭占用该端口的程序后重试。")
+	if runtime.GOOS == "windows" {
+		fmt.Print("按回车键关闭窗口...")
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	}
+}
+
+func gatewayAlreadyRunning(loginURL string) bool {
+	client := http.Client{Timeout: 2 * time.Second}
+	response, err := client.Get(loginURL)
+	if err != nil {
+		return false
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 128<<10))
+	return err == nil && bytes.Contains(body, []byte("OpenCode Pool Gateway"))
 }
 func requestShutdown() { shutdownOnce.Do(func() { close(shutdownSignal) }) }
 func shutdownHandler(w http.ResponseWriter, r *http.Request) {
