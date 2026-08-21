@@ -1,4 +1,4 @@
-﻿# Ubuntu 閮ㄧ讲
+# Ubuntu 閮ㄧ讲
 
 浠ヤ笅绀轰緥灏?OpenCode Pool Gateway 瀹夎鍦?`/opt/opencode-pool-gateway`锛屽苟閫氳繃 systemd 杩愯銆?
 ## 瀹夎
@@ -7,12 +7,12 @@ AMD64锛?
 ```bash
 sudo useradd --system --home /opt/opencode-pool-gateway --shell /usr/sbin/nologin opencode-pool-gateway
 sudo mkdir -p /opt/opencode-pool-gateway/data /opt/opencode-pool-gateway/temp
-sudo cp opencode-pool-gateway-0.7.2-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
+sudo cp opencode-pool-gateway-0.7.3-linux-amd64 /opt/opencode-pool-gateway/opencode-pool-gateway
 sudo chown -R opencode-pool-gateway:opencode-pool-gateway /opt/opencode-pool-gateway
 sudo chmod 750 /opt/opencode-pool-gateway/opencode-pool-gateway /opt/opencode-pool-gateway/data /opt/opencode-pool-gateway/temp
 ```
 
-ARM64 鏈嶅姟鍣ㄥ皢鏂囦欢鍚嶆浛鎹负 `opencode-pool-gateway-0.7.2-linux-arm64`銆?
+ARM64 鏈嶅姟鍣ㄥ皢鏂囦欢鍚嶆浛鎹负 `opencode-pool-gateway-0.7.3-linux-arm64`銆?
 璐﹀彿瀵嗙爜鐧诲綍闇€瑕?Python 3 鍜?`requests`锛?
 ```bash
 sudo apt update
@@ -85,3 +85,4 @@ sudo systemctl start opencode-pool-gateway
 
 Ubuntu 鏈嶅姟鍣ㄦ棤娉曠洿鎺ヨ鍙栫敤鎴风數鑴戞祻瑙堝櫒涓殑 HttpOnly Cookie銆傝鍏堝湪妗岄潰娴忚鍣ㄩ€氳繃 GitHub 鎴?Google 鐧诲綍 OpenCode锛岀劧鍚庢墜鍔ㄥ鍒?Workspace ID 鍜屽畬鏁?`auth` Cookie 鍒?OpenCode Pool Gateway銆?
 鎻愪氦杩欎袱椤瑰悗锛孫penCode Pool Gateway 浼氳嚜鍔ㄨ鍙栭偖绠卞拰褰撳墠鐢ㄦ埛鏈汉鎷ユ湁鐨?API Key锛涘鏋滄湁澶氫釜 Key锛岄渶鍦ㄧ綉椤典腑閫夋嫨涓€涓€備笉瑕佸湪鏈嶅姟鍣ㄤ腑淇濆瓨 GitHub 鎴?Google 瀵嗙爜銆?
+

@@ -129,6 +129,7 @@ type Account struct {
 	APIKey            string       `json:"apiKey"`
 	AuthCookie        string       `json:"authCookie"`
 	Status            string       `json:"status"`
+	Enabled           bool         `json:"enabled"`
 	Error             string       `json:"error,omitempty"`
 	ModelCount        int          `json:"modelCount"`
 	GoModelCount      int          `json:"goModelCount"`
@@ -155,6 +156,7 @@ type PublicAccount struct {
 	Type              string       `json:"type"`
 	WorkspaceID       string       `json:"workspaceId"`
 	Status            string       `json:"status"`
+	Enabled           bool         `json:"enabled"`
 	Error             string       `json:"error,omitempty"`
 	ModelCount        int          `json:"modelCount"`
 	GoModelCount      int          `json:"goModelCount"`
@@ -728,6 +730,18 @@ func (s *accountStore) load() error {
 	if s.Accounts == nil {
 		s.Accounts = []Account{}
 	}
+	// Older account files did not have an enabled flag; keep those credentials active.
+	var rawAccounts []map[string]json.RawMessage
+	_ = json.Unmarshal(b, &rawAccounts)
+	for i := range s.Accounts {
+		if i >= len(rawAccounts) {
+			s.Accounts[i].Enabled = true
+			continue
+		}
+		if _, present := rawAccounts[i]["enabled"]; !present {
+			s.Accounts[i].Enabled = true
+		}
+	}
 	return nil
 }
 
@@ -1197,6 +1211,7 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 			Priority                                        int
 			APIOnly                                         bool
 			ProbeService                                    string
+			Enabled                                         *bool
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
 			writeError(w, 400, "请求数据无效")
@@ -1275,7 +1290,11 @@ func accountsHandler(w http.ResponseWriter, r *http.Request) {
 		if input.Name == "" {
 			input.Name = input.WorkspaceID
 		}
-		a := Account{ID: "acc-" + strconv.FormatInt(time.Now().UnixNano(), 36), Name: input.Name, Type: "workspace", WorkspaceID: input.WorkspaceID, APIKey: strings.TrimPrefix(input.APIKey, "Bearer "), AuthCookie: input.AuthCookie, Status: "checking", Priority: input.Priority, ProxyURL: input.ProxyURL, APIOnly: input.APIOnly, ProbeService: "all"}
+		enabled := true
+		if input.Enabled != nil {
+			enabled = *input.Enabled
+		}
+		a := Account{ID: "acc-" + strconv.FormatInt(time.Now().UnixNano(), 36), Name: input.Name, Type: "workspace", WorkspaceID: input.WorkspaceID, APIKey: strings.TrimPrefix(input.APIKey, "Bearer "), AuthCookie: input.AuthCookie, Status: "checking", Enabled: enabled, Priority: input.Priority, ProxyURL: input.ProxyURL, APIOnly: input.APIOnly, ProbeService: "all"}
 		if input.APIOnly {
 			a.ZenAvailable = true
 			a.ZenBillingEnabled = entitlements.ZenEnabled
@@ -1396,6 +1415,7 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 			Priority                                        int
 			APIOnly                                         bool
 			ProbeService                                    string
+			Enabled                                         *bool
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
 			writeError(w, 400, "请求数据无效")
@@ -1436,6 +1456,9 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a := &store.Accounts[index]
+		if input.Enabled != nil {
+			a.Enabled = *input.Enabled
+		}
 		if input.Name != "" {
 			a.Name = input.Name
 		}
@@ -1489,6 +1512,11 @@ func refreshAll() {
 }
 
 func refreshAccount(a *Account) {
+	if !a.Enabled {
+		a.Status = "disabled"
+		a.LastChecked = time.Now()
+		return
+	}
 	a.LastChecked = time.Now()
 	a.Error, a.GoError, a.ZenError = "", "", ""
 	a.Status = "checking"
@@ -1785,10 +1813,24 @@ func publicAccounts() []PublicAccount {
 	}
 	return out
 }
+func setAccountEnabled(id string, enabled bool) {
+	store.Lock()
+	defer store.Unlock()
+	for i := range store.Accounts {
+		if store.Accounts[i].ID == id {
+			store.Accounts[i].Enabled = enabled
+			if !enabled {
+				store.Accounts[i].Status = "disabled"
+			}
+			_ = store.saveLocked()
+			return
+		}
+	}
+}
 func toPublic(a Account) PublicAccount {
 	return PublicAccount{
 		ID: a.ID, Name: a.Name, Type: a.Type, WorkspaceID: a.WorkspaceID,
-		Status: a.Status, Error: a.Error, ModelCount: a.ModelCount,
+		Status: a.Status, Enabled: a.Enabled, Error: a.Error, ModelCount: a.ModelCount,
 		GoModelCount: a.GoModelCount, ZenModelCount: a.ZenModelCount,
 		Rolling: a.Rolling, Weekly: a.Weekly, Monthly: a.Monthly,
 		ZenBalance: a.ZenBalance, GoAvailable: a.GoAvailable, ZenAvailable: a.ZenAvailable, ZenBillingEnabled: a.ZenBillingEnabled,

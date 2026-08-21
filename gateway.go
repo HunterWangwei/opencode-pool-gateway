@@ -425,6 +425,9 @@ func eligibleAccounts(path, model string) []Account {
 	isGo := strings.HasPrefix(path, "/zen/go/")
 	isCatalog := path == "/zen/v1/models" || path == "/zen/go/v1/models"
 	for _, a := range store.Accounts {
+		if !a.Enabled && a.Status == "disabled" {
+			continue
+		}
 		if a.APIKey == "" {
 			continue
 		}
@@ -687,6 +690,9 @@ func (g *gatewayManager) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		rb, re := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		entry.StatusCode = resp.StatusCode
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusTooManyRequests {
+			setAccountEnabled(a.ID, false)
+		}
 		inspectBody := responseBodyForInspection(resp.Header, rb)
 		entry.InputTokens, entry.OutputTokens, entry.CacheRead, entry.CacheWrite = usageFromBody(inspectBody)
 		if re != nil {

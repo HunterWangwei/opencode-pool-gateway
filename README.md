@@ -1,6 +1,6 @@
-﻿# OpenCode Pool Gateway
+# OpenCode Pool Gateway
 
-褰撳墠鐗堟湰锛歚0.7.2`
+褰撳墠鐗堟湰锛歚0.7.3`
 
 ## API 杞彂缃戝叧
 
@@ -82,7 +82,7 @@ Zen 鍏嶈垂妯″瀷娓呭崟渚濇嵁 OpenCode 瀹樻柟瀹氫环椤电淮鎶
 ## 蹇€熷紑濮?
 ### Windows
 
-涓嬭浇 `opencode-pool-gateway-0.7.2-windows-amd64.exe`锛屽弻鍑昏繍琛岋紝鐒跺悗璁块棶锛?
+涓嬭浇 `opencode-pool-gateway-0.7.3-windows-amd64.exe`锛屽弻鍑昏繍琛岋紝鐒跺悗璁块棶锛?
 ```text
 http://localhost:8787
 ```
@@ -99,11 +99,11 @@ Q  瀹夊叏閫€鍑?H  鏄剧ず甯姪
 ### Linux
 
 ```bash
-chmod +x opencode-pool-gateway-0.7.2-linux-amd64
-./opencode-pool-gateway-0.7.2-linux-amd64
+chmod +x opencode-pool-gateway-0.7.3-linux-amd64
+./opencode-pool-gateway-0.7.3-linux-amd64
 ```
 
-ARM64 Ubuntu 浣跨敤 `opencode-pool-gateway-0.7.2-linux-arm64`銆傛湇鍔″櫒閮ㄧ讲鍙?systemd 閰嶇疆瑙?[docs/ubuntu.md](docs/ubuntu.md)銆?
+ARM64 Ubuntu 浣跨敤 `opencode-pool-gateway-0.7.3-linux-arm64`銆傛湇鍔″櫒閮ㄧ讲鍙?systemd 閰嶇疆瑙?[docs/ubuntu.md](docs/ubuntu.md)銆?
 ## 鐧诲綍瀹夊叏
 
 鐧诲綍閰嶇疆淇濆瓨鍦ㄥ彲鎵ц鏂囦欢鏃佺殑 `data/auth.json`锛屼紭鍏堢骇楂樹簬鍏朵粬鏉ユ簮銆傚瘑鐮佷娇鐢ㄩ殢鏈虹洂鍜?PBKDF2-HMAC-SHA256 鍝堝笇淇濆瓨锛屼笉鍐欏叆鏄庢枃銆?
@@ -190,7 +190,7 @@ chmod +x scripts/build.sh
 浜х墿鐢熸垚鍦?`dist/`锛屽寘鍚?Windows AMD64銆丩inux AMD64銆丩inux ARM64 鍜?`SHA256SUMS.txt`銆?
 鐗堟湰鍙风敱鏍圭洰褰?`VERSION` 绠＄悊锛屽苟閫氳繃鏋勫缓鍙傛暟鍐欏叆绋嬪簭锛?
 ```bash
-./opencode-pool-gateway-0.7.2-linux-amd64 --version
+./opencode-pool-gateway-0.7.3-linux-amd64 --version
 ```
 
 ## 鎺ュ彛
@@ -222,4 +222,6 @@ chmod +x scripts/build.sh
 ## License
 
 [MIT](LICENSE)
+
+
 

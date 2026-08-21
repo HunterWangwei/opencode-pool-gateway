@@ -122,6 +122,19 @@ func TestPriorityCandidatesAndRetryLimit(t *testing.T) {
 	}
 }
 
+func TestDisabledCredentialIsExcluded(t *testing.T) {
+	old := store.Accounts
+	defer func() { store.Accounts = old }()
+	store.Accounts = []Account{
+		{ID: "disabled", APIKey: "key-1", GoAvailable: true, Status: "disabled", Enabled: false},
+		{ID: "active", APIKey: "key-2", GoAvailable: true, Status: "healthy", Enabled: true},
+	}
+	got := eligibleAccounts("/zen/go/v1/chat/completions", "")
+	if len(got) != 1 || got[0].ID != "active" {
+		t.Fatalf("disabled credential should be excluded: %+v", got)
+	}
+}
+
 func TestCredentialModelEntitlements(t *testing.T) {
 	oldAccounts := store.Accounts
 	defer func() { store.Accounts = oldAccounts }()
